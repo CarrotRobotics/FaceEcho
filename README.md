@@ -41,6 +41,12 @@ FaceEcho 是一个纯浏览器端运行的表情识别与虚拟形象应用。�
 pip install -r requirements.txt
 ```
 
+> 📌 **首次使用建议先跑一次 `bash run.sh`**（或 `bash get_model.sh`），它会自动把识别模型
+> `face_landmarker.task`（约 3.6MB，需能访问 storage.googleapis.com）下载到 `static/models/`。
+> 仓库里**不含这个模型文件**，如果直接 `python app.py` 而模型还没下载，页面会报
+> `Failed to fetch model: ./models/face_landmarker.task (404)`、且「开启摄像头」按钮点不动。
+> 下载过一次后就一直在了，之后用 `python app.py` 也没问题。
+
 ---
 
 ## 场景一：本地 + 普通摄像头（最简单）
@@ -96,6 +102,10 @@ sudo modprobe v4l2loopback video_nr=10 card_label="RealSenseRGB" exclusive_caps=
 ```
 
 ### 4) 把彩色流喂进虚拟摄像头（**这个终端要一直开着**）
+
+> ⚠️ **先检查是否已有喂流在跑**：`pgrep -af ffmpeg`。
+> 如果看到一条带 `-i /dev/video4` 的 ffmpeg 进程，说明喂流已经在运行，**跳过这一步**
+> （重复启动会报 `/dev/video4: Device or resource busy`，那不是错误，是提醒你别重复开）。
 
 ```bash
 ffmpeg -use_wallclock_as_timestamps 1 -f v4l2 -input_format yuyv422 \
