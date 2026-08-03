@@ -1,0 +1,731 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FaceEcho 脸回声 · 表情识别与虚拟形象</title>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.1/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.1/examples/jsm/",
+  "@pixiv/three-vrm": "https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@3.1.6/lib/three-vrm.module.js"
+}}
+</script>
+<style>
+  :root{--bg1:#0e1020;--bg2:#1b1f3a;--line:#6cf0ff;--muscle:#ff5a7a;--text:#eaf2ff;--muted:#8992c0;--ok:#5ee6a0;--warn:#ffcf5a;}
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;font-family:-apple-system,"PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+    background:radial-gradient(1200px 800px at 30% -10%,var(--bg2),var(--bg1));color:var(--text)}
+  .wrap{max-width:1220px;margin:0 auto;padding:22px 16px 60px}
+  h1{font-size:21px;margin:4px 0 2px}
+  .sub{color:var(--muted);font-size:13px;margin-bottom:14px;line-height:1.6}
+  .controls{display:flex;gap:9px;align-items:center;margin-bottom:14px;flex-wrap:wrap}
+  button{background:linear-gradient(135deg,#3a7bff,#6a4bff);color:#fff;border:0;padding:10px 16px;
+    border-radius:11px;font-size:14px;font-weight:600;cursor:pointer;box-shadow:0 6px 16px rgba(58,123,255,.3)}
+  button.ghost{background:rgba(255,255,255,.08);box-shadow:none}
+  button.cal{background:linear-gradient(135deg,#12b981,#0e9e6e)}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  .status{color:var(--muted);font-size:13px}
+  .grid{display:grid;grid-template-columns:1.1fr 1fr 1fr;gap:16px;align-items:start}
+  @media(max-width:1100px){.grid{grid-template-columns:1fr 1fr}}
+  @media(max-width:720px){.grid{grid-template-columns:1fr}}
+  #companion{width:100%;aspect-ratio:4/3;border-radius:12px;display:block;background:#171a2e}
+  .card{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.09);border-radius:16px;padding:12px}
+  .card h2{font-size:13px;margin:2px 4px 8px;color:var(--muted);font-weight:600;letter-spacing:.5px}
+  .stage{position:relative;border-radius:12px;overflow:hidden;background:#05060f;aspect-ratio:4/3}
+  #abstract{width:100%;height:100%;display:block}
+  video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transform:scaleX(-1);opacity:.16}
+  video.hide{display:none}
+  #banner{position:absolute;left:0;right:0;top:0;text-align:center;padding:8px;font-size:15px;font-weight:700;background:rgba(0,0,0,.55);display:none}
+  #cartoon{width:100%;aspect-ratio:4/3;border-radius:12px;display:block;background:#171a2e}
+  .mood{display:flex;align-items:center;gap:12px;margin:10px 2px 2px}
+  .mood-emoji{font-size:32px}.mood-name{font-size:20px;font-weight:700}
+  .bars{margin-top:10px;display:grid;gap:7px}
+  .bar-row{display:grid;grid-template-columns:66px 1fr 40px;align-items:center;gap:8px;font-size:12px}
+  .bar-track{height:9px;background:rgba(255,255,255,.08);border-radius:6px;overflow:hidden;position:relative}
+  .bar-fill{height:100%;width:0;border-radius:6px;background:linear-gradient(90deg,#6cf0ff,#6a4bff);transition:width .1s}
+  .mini-src{display:flex;gap:8px;font-size:10px;color:var(--muted);margin-top:2px}
+  .fuse{margin:12px 2px 2px;font-size:12px;color:var(--muted)}
+  .fuse input{width:100%}
+  .fuse .row{display:flex;justify-content:space-between;margin-bottom:4px}
+  .metrics{margin-top:12px;display:grid;grid-template-columns:1fr 1fr;gap:6px 14px;font-size:12px;color:var(--muted)}
+  .metrics b{color:var(--text);font-variant-numeric:tabular-nums}
+  .pose{margin-top:10px;font-size:12px;color:var(--muted);display:flex;gap:10px;flex-wrap:wrap}
+  .pose b{color:var(--text)}
+  .pill{font-size:11px;padding:2px 8px;border-radius:10px;background:rgba(94,230,160,.15);color:var(--ok);border:1px solid rgba(94,230,160,.4)}
+  .pill.warn{background:rgba(255,207,90,.15);color:var(--warn);border-color:rgba(255,207,90,.4)}
+  .tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;min-height:26px}
+  .tag{background:rgba(255,143,163,.16);border:1px solid rgba(255,143,163,.4);color:#ffc2cf;padding:3px 10px;border-radius:16px;font-size:12px;font-weight:600}
+  .foot{color:var(--muted);font-size:12px;margin-top:20px;line-height:1.6}
+  .legend{display:flex;gap:14px;font-size:11px;color:var(--muted);margin-top:6px;flex-wrap:wrap}
+  .legend i{display:inline-block;width:20px;height:0;border-top:3px solid;vertical-align:middle;margin-right:4px}
+  #avatarWrap{position:relative;width:100%;aspect-ratio:4/3;border-radius:12px;overflow:hidden;background:linear-gradient(160deg,#2a2f52,#12142a)}
+  #avatarWrap canvas{width:100%!important;height:100%!important;display:block}
+  #avatarHint{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;color:var(--muted);font-size:13px;padding:16px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🎭 FaceEcho · 脸回声 —— 表情识别 + 虚拟形象</h1>
+  <div class="sub">同时跑两条概率来源：<b style="color:var(--line)">几何法</b>（基于线条走向，可解释、已校准+姿态矫正）与 <b style="color:#c9b6ff">Blendshape 模型</b>（Google 训练输出）。两者加权<b>融合</b>成最终情绪，并驱动一张<b>卡通脸</b>实时反馈。融合权重可调。</div>
+
+  <div class="controls">
+    <button id="startBtn" disabled>▶ 开启摄像头</button>
+    <select id="camSel" style="padding:9px 10px;border-radius:10px;background:#12152b;color:#eaf2ff;border:1px solid rgba(255,255,255,.15);font-size:13px;max-width:260px"><option value="">（自动选择彩色摄像头）</option></select>
+    <button id="calBtn" class="cal" disabled>🎯 校准中性脸(3秒)</button>
+    <button id="btn3d" class="ghost">🧑 3D人物：关</button>
+    <label class="btn" style="background:linear-gradient(135deg,#ff8f43,#ff5aa0);color:#fff;padding:10px 16px;border-radius:11px;font-size:14px;font-weight:600;cursor:pointer">📦 加载.vrm形象<input id="vrmFile" type="file" accept=".vrm" style="display:none"></label>
+    <button id="bodyBtn" class="ghost">🧍 身体：显示</button>
+    <button id="stopBtn" disabled>■ 停止</button>
+    <button id="videoBtn" class="ghost">👁 底图：淡显</button>
+    <button id="muscleBtn" class="ghost">💪 肌肉线：显示</button>
+    <span class="status" id="status">正在加载识别模型…</span>
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <h2>抽象线条脸（跟随你的面部）</h2>
+      <div class="stage">
+        <video id="video" autoplay playsinline muted></video>
+        <canvas id="abstract" width="640" height="480"></canvas>
+        <div id="banner"></div>
+      </div>
+      <div class="legend">
+        <span><i style="border-color:#6cf0ff"></i>五官轮廓</span>
+        <span><i style="border-color:#ff5a7a"></i>肌肉走向/激活</span>
+        <span><i style="border-color:#ffd76c"></i>朝向轴</span>
+      </div>
+      <div class="tags" id="actionTags"></div>
+    </div>
+
+    <div class="card">
+      <h2 id="midTitle">我的Q版脸（镜像你的动作）</h2>
+      <canvas id="cartoon" width="480" height="360" style="width:100%;aspect-ratio:4/3;border-radius:12px;display:block;background:#171a2e"></canvas>
+      <div id="avatarWrap" style="display:none"><div id="avatarHint">正在加载 3D 形象…<br>也可点「📦 加载.vrm形象」换一个</div></div>
+      <div class="mood">
+        <div class="mood-emoji" id="moodEmoji">🙂</div>
+        <div><div class="mood-name" id="moodName">等待中</div>
+        <div class="status" id="moodHint">开启摄像头后开始</div></div>
+      </div>
+      <div class="bars" id="bars"></div>
+      <div class="fuse">
+        <div class="row"><span>融合权重</span><span id="wlabel">几何 50% / 模型 50%</span></div>
+        <input id="wslider" type="range" min="0" max="100" value="50">
+      </div>
+      <div class="metrics" id="metrics"></div>
+      <div class="pose" id="pose"></div>
+    </div>
+
+    <div class="card">
+      <h2>情绪反馈伙伴（对你的表情做出回应）</h2>
+      <canvas id="companion" width="480" height="360"></canvas>
+      <div id="bubble" style="margin:10px 4px 2px;padding:10px 14px;background:rgba(108,240,255,.1);border:1px solid rgba(108,240,255,.3);border-radius:12px;font-size:15px;font-weight:600;min-height:22px;transition:.2s">我在这儿，做个表情看看～</div>
+      <div class="status" style="margin:8px 4px 0" id="compHint">它不是镜像你，而是根据你的情绪给出回应</div>
+    </div>
+  </div>
+
+  <div class="foot">
+    引擎：MediaPipe FaceLandmarker（468 点 + Blendshapes）。融合 = 权重·几何概率 + (1−权重)·模型概率，再归一化。<br>
+    卡通脸的五官动作直接由 blendshape 驱动（微笑/张口/挑眉/眨眼等），情绪底色由融合结果决定。全部本地运行。
+  </div>
+</div>
+
+<script type="module">
+import { FaceLandmarker, FilesetResolver }
+  from "./mediapipe/vision_bundle.mjs";
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm';
+
+const $=id=>document.getElementById(id);
+const video=$('video'), cv=$('abstract'), ctx=cv.getContext('2d');
+const cartoon=$('cartoon'), fctx=cartoon.getContext('2d');
+const btn3d=$('btn3d'), midTitle=$('midTitle');
+const companion=$('companion'), gctx=companion.getContext('2d'), bubble=$('bubble'), compHint=$('compHint');
+const vrmFile=$('vrmFile'), bodyBtn=$('bodyBtn'), avatarWrap=$('avatarWrap'), avatarHint=$('avatarHint');
+let lastLandmarks=null, avatarProfile=null;
+const off=document.createElement('canvas'), offc=off.getContext('2d',{willReadFrequently:true});
+const statusEl=$('status'), banner=$('banner');
+const startBtn=$('startBtn'), calBtn=$('calBtn'), stopBtn=$('stopBtn'), videoBtn=$('videoBtn'), muscleBtn=$('muscleBtn');
+const moodEmoji=$('moodEmoji'), moodName=$('moodName'), moodHint=$('moodHint');
+const barsEl=$('bars'), metricsEl=$('metrics'), poseEl=$('pose'), tagsEl=$('actionTags');
+const wslider=$('wslider'), wlabel=$('wlabel'), camSel=$('camSel');
+
+let lm=null, running=false, stream=null, lastT=-1, showMuscle=true, wGeo=0.5;
+wslider.oninput=()=>{wGeo=wslider.value/100;wlabel.textContent=`几何 ${wslider.value}% / 模型 ${100-wslider.value}%`;};
+
+const EMO={happy:{n:'开心',e:'😄'},surprise:{n:'惊讶',e:'😮'},sad:{n:'伤心',e:'😢'},angry:{n:'生气',e:'😠'},neutral:{n:'平静',e:'🙂'}};
+const keys=['happy','surprise','sad','angry','neutral'];
+const barF={};
+for(const k of keys){const r=document.createElement('div');r.className='bar-row';
+  r.innerHTML=`<span>${EMO[k].e} ${EMO[k].n}</span><div class="bar-track"><div class="bar-fill"></div></div><span class="v">0%</span>`;
+  barsEl.appendChild(r);barF[k]={f:r.querySelector('.bar-fill'),v:r.querySelector('.v')};}
+
+async function init(){
+  try{
+    const files=await FilesetResolver.forVisionTasks("./mediapipe/wasm");
+    lm=await FaceLandmarker.createFromOptions(files,{
+      baseOptions:{modelAssetPath:"./models/face_landmarker.task",delegate:"GPU"},
+      outputFaceBlendshapes:true, outputFacialTransformationMatrixes:true, runningMode:"VIDEO", numFaces:1});
+    statusEl.textContent='模型就绪，点击"开启摄像头"';startBtn.disabled=false;drawCartoon({},'neutral');
+  }catch(e){statusEl.textContent='模型加载失败：'+e.message;}
+}
+init();
+
+async function populateCams(){
+  try{
+    const devs=await navigator.mediaDevices.enumerateDevices();
+    const cams=devs.filter(d=>d.kind==='videoinput');
+    camSel.innerHTML='<option value="">（自动选择彩色摄像头）</option>';
+    cams.forEach((c,i)=>{const o=document.createElement('option');o.value=c.deviceId;
+      o.textContent=c.label||('摄像头 '+(i+1));camSel.appendChild(o);});
+  }catch(e){}
+}
+async function openCam(deviceId){
+  const base={width:{ideal:640},height:{ideal:480}};
+  const constraints=deviceId?{video:{...base,deviceId:{exact:deviceId}},audio:false}
+                             :{video:base,audio:false};
+  return await navigator.mediaDevices.getUserMedia(constraints);
+}
+async function startCamera(){
+  statusEl.textContent='正在打开摄像头…';
+  // 若用户指定了设备，直接用；否则枚举所有摄像头逐个尝试，跳过打不开的深度/红外节点
+  try{
+    if(camSel.value){ stream=await openCam(camSel.value); }
+    else{
+      // 先拿一次权限（任意可用设备），以便读取带名字的设备列表
+      let devs=await navigator.mediaDevices.enumerateDevices();
+      let cams=devs.filter(d=>d.kind==='videoinput');
+      if(!cams.some(c=>c.label)){
+        // 还没有权限标签：尝试逐个 deviceId 直到成功
+      }
+      // 优先名字里带 RGB/Color 的，其次逐个尝试
+      cams.sort((a,b)=>{
+        const ra=/rgb|color/i.test(a.label)?0:1, rb=/rgb|color/i.test(b.label)?0:1;return ra-rb;});
+      let ok=false,lastErr=null;
+      for(const c of cams){
+        try{ stream=await openCam(c.deviceId); ok=true; break; }
+        catch(err){ lastErr=err; }
+      }
+      if(!ok){
+        // 连枚举都没有标签（从未授权），退回一次通用请求
+        try{ stream=await navigator.mediaDevices.getUserMedia({video:true,audio:false}); ok=true; }
+        catch(err){ lastErr=err; }
+      }
+      if(!ok) throw lastErr||new Error('没有可用的彩色摄像头');
+    }
+  }catch(e){
+    statusEl.textContent='无法访问摄像头：'+e.message+'（若是 RealSense，请在下拉里手动选带 RGB/Color 或能出彩色画面的那一项）';
+    await populateCams();return;
+  }
+  video.srcObject=stream;await video.play();
+  cv.width=video.videoWidth||640;cv.height=video.videoHeight||480;
+  running=true;startBtn.disabled=true;stopBtn.disabled=false;calBtn.disabled=false;
+  await populateCams();
+  // 把当前实际使用的设备在下拉里选中
+  const track=stream.getVideoTracks()[0];
+  if(track){const id=track.getSettings().deviceId; if(id)camSel.value=id;
+    statusEl.textContent='✅ 已打开：'+(track.label||'摄像头')+'。请保持自然表情，点击"校准中性脸"';}
+  loop();
+}
+startBtn.onclick=startCamera;
+// 切换下拉时若正在运行，重开选中的摄像头
+camSel.onchange=async()=>{
+  if(!running)return;
+  if(stream)stream.getTracks().forEach(t=>t.stop());
+  running=false;
+  try{ stream=await openCam(camSel.value||undefined); }
+  catch(e){ statusEl.textContent='该摄像头打不开（可能是深度/红外流）：'+e.message;return; }
+  video.srcObject=stream;await video.play();
+  cv.width=video.videoWidth||640;cv.height=video.videoHeight||480;running=true;loop();
+  const t=stream.getVideoTracks()[0];statusEl.textContent='✅ 已切换：'+(t?t.label:'')+' 。看到彩色画面即选对了';
+};
+stopBtn.onclick=()=>{running=false;startBtn.disabled=false;stopBtn.disabled=true;calBtn.disabled=true;
+  if(stream)stream.getTracks().forEach(t=>t.stop());ctx.clearRect(0,0,cv.width,cv.height);statusEl.textContent='已停止';};
+videoBtn.onclick=()=>{video.classList.toggle('hide');videoBtn.textContent=video.classList.contains('hide')?'👁 底图：隐藏':'👁 底图：淡显';};
+muscleBtn.onclick=()=>{showMuscle=!showMuscle;muscleBtn.textContent='💪 肌肉线：'+(showMuscle?'显示':'隐藏');};
+
+let calState='none',calSamples=[],calEndTime=0,baseline=null;
+calBtn.onclick=()=>{calSamples=[];calState='collecting';calEndTime=performance.now()+3000;};
+
+function loop(){if(!running)return;
+  if(video.currentTime!==lastT){lastT=video.currentTime;const res=lm.detectForVideo(video,performance.now());process(res);}
+  requestAnimationFrame(loop);}
+
+// ===== 几何 =====
+const W=()=>cv.width,H=()=>cv.height;
+let P=null,Q=null;
+function px(i){return {x:(1-P[i].x)*W(),y:P[i].y*H()};}
+function dQ(i,j){return Math.hypot(Q[i].x-Q[j].x,Q[i].y-Q[j].y);}
+const clamp=v=>Math.max(0,Math.min(1,v)),lerp=(a,b,t)=>a+(b-a)*t;
+
+function estimatePose(){
+  const AR=W()/H();
+  const e1={x:P[33].x*AR,y:P[33].y},e2={x:P[263].x*AR,y:P[263].y};
+  const roll=Math.atan2(e2.y-e1.y,e2.x-e1.x);
+  const mid=(P[234].x+P[454].x)/2,halfW=(P[454].x-P[234].x)/2||1e-3;
+  const yaw=Math.max(-1,Math.min(1,(P[1].x-mid)/halfW));
+  const up=P[1].y-(P[33].y+P[263].y)/2,down=P[152].y-P[1].y;
+  const pitch=Math.max(-1,Math.min(1,(up/(down||1e-3)-0.72)/0.4));
+  return {roll,yaw,pitch};
+}
+function buildQ(roll){const AR=W()/H(),c=Math.cos(-roll),s=Math.sin(-roll),ox=P[1].x*AR,oy=P[1].y;
+  Q=new Array(P.length);
+  for(let i=0;i<P.length;i++){const x=P[i].x*AR-ox,y=P[i].y-oy;Q[i]={x:x*c-y*s+ox,y:x*s+y*c+oy};}}
+function computeFeatures(pose){
+  const faceH=dQ(10,152),eyeSpan=dQ(33,263);
+  const cornerY=(Q[61].y+Q[291].y)/2,lipMidY=(Q[13].y+Q[14].y)/2;
+  const browY=(Q[105].y+Q[334].y)/2,eyeY=(Q[159].y+Q[386].y)/2;
+  const yawComp=Math.max(0.55,Math.cos(pose.yaw*1.3));
+  return {smileLift:(lipMidY-cornerY)/faceH,mouthOpen:dQ(13,14)/faceH,
+    mouthW:(dQ(61,291)/eyeSpan)/yawComp,browGap:(eyeY-browY)/faceH,
+    innerBrowGap:(dQ(55,285)/eyeSpan)/yawComp,eyeOpen:(dQ(159,145)+dQ(386,374))/2/faceH};
+}
+const hist={eyeOpen:[],mouthOpen:[]};
+function pushHist(f){for(const k of ['eyeOpen','mouthOpen']){hist[k].push(f[k]);if(hist[k].length>8)hist[k].shift();}}
+function velocity(k){const h=hist[k];return h.length<3?0:h[h.length-1]-h[0];}
+
+// 几何概率
+function classifyGeo(f){
+  const B=baseline,rel=(cur,key,scale)=>B?clamp((cur-B[key])/scale):0;
+  const nSmile=B?rel(f.smileLift,'smileLift',0.05):clamp((f.smileLift-0.02)/0.06);
+  const nOpen=B?rel(f.mouthOpen,'mouthOpen',0.09):clamp((f.mouthOpen-0.02)/0.10);
+  const nBrowUp=B?rel(f.browGap,'browGap',0.05):clamp((f.browGap-0.14)/0.06);
+  const nFurrow=B?clamp((B.innerBrowGap-f.innerBrowGap)/0.05):clamp((0.34-f.innerBrowGap)/0.06);
+  const nEyeWide=B?rel(f.eyeOpen,'eyeOpen',0.03):clamp((f.eyeOpen-0.045)/0.03);
+  const nFrown=B?clamp((B.smileLift-f.smileLift-0.01)/0.03):clamp((-f.smileLift-0.005)/0.03);
+  const vEye=Math.max(0,velocity('eyeOpen'))*30,vMouth=Math.max(0,velocity('mouthOpen'))*25;
+  const dynSurprise=clamp(Math.max(vEye,vMouth));
+  let sc={happy:nSmile*1.4,
+    surprise:Math.max(nOpen*1.25,nEyeWide*1.15,nBrowUp*0.85)*(0.9+0.5*dynSurprise),
+    sad:Math.max(nFrown*1.3,nFurrow*0.4+nFrown*0.7),angry:nFurrow*1.5,neutral:0};
+  if(nSmile>0.35){sc.angry*=0.35;sc.sad*=0.4;}
+  // 平静 = 残差：只有当所有表情都很弱时才高
+  const maxE=Math.max(sc.happy,sc.surprise,sc.sad,sc.angry);
+  sc.neutral=Math.max(0.05,0.55-maxE*1.1);
+  return {sc:norm(sc),dbg:{nSmile,nOpen,nBrowUp,nFurrow,nEyeWide,nFrown,dynSurprise}};
+}
+// blendshape 概率
+function classifyBS(m){
+  const smile=(m.mouthSmileLeft+m.mouthSmileRight)/2||0;
+  const frown=(m.mouthFrownLeft+m.mouthFrownRight)/2||0;
+  const jaw=m.jawOpen||0,browUp=m.browInnerUp||0;
+  const browDown=(m.browDownLeft+m.browDownRight)/2||0;
+  const eyeWide=(m.eyeWideLeft+m.eyeWideRight)/2||0;
+  let sc={happy:smile*1.5,
+    surprise:Math.max(jaw*1.5,eyeWide*1.4,browUp*1.1),
+    sad:Math.max(frown*1.5,browUp*0.6+frown*0.6),
+    angry:Math.max(browDown*1.6,browDown*0.8+frown*0.6),neutral:0};
+  if(smile>0.3)sc.angry*=0.4;
+  const maxE=Math.max(sc.happy,sc.surprise,sc.sad,sc.angry);
+  sc.neutral=Math.max(0.05,0.5-maxE*1.1);
+  return norm(sc);
+}
+function norm(sc){let sum=0;for(const k in sc){sc[k]=Math.max(0,sc[k]);sum+=sc[k];}for(const k in sc)sc[k]=sum?sc[k]/sum:0;return sc;}
+
+let sm={happy:0,surprise:0,sad:0,angry:0,neutral:1},prevMetric='',prevTags='';
+function process(res){
+  ctx.clearRect(0,0,W(),H());
+  if(!res.faceLandmarks||!res.faceLandmarks.length){
+    moodName.textContent='没检测到人脸';moodEmoji.textContent='🔍';moodHint.textContent='把脸移到画面中央';banner.style.display='none';return;}
+  P=res.faceLandmarks[0]; lastLandmarks=P;
+  const pose=estimatePose();buildQ(pose.roll);
+  const f=computeFeatures(pose);pushHist(f);
+
+  // blendshape map
+  const m={};if(res.faceBlendshapes&&res.faceBlendshapes[0])for(const c of res.faceBlendshapes[0].categories)m[c.categoryName]=c.score;
+
+  if(calState==='collecting'){
+    calSamples.push(f);const remain=Math.max(0,(calEndTime-performance.now())/1000);
+    banner.style.display='block';banner.textContent=`🎯 校准中… 保持自然 ${remain.toFixed(1)}s（${calSamples.length} 帧）`;
+    if(performance.now()>=calEndTime){baseline={};
+      for(const k of ['smileLift','mouthOpen','mouthW','browGap','innerBrowGap','eyeOpen'])
+        baseline[k]=calSamples.reduce((s,x)=>s+x[k],0)/calSamples.length;
+      calState='done';banner.style.display='none';statusEl.textContent='✅ 已校准';calBtn.textContent='🎯 重新校准';}
+  }
+
+  const extreme=Math.abs(pose.yaw)>0.6||Math.abs(pose.pitch)>0.8||Math.abs(pose.roll)>0.6;
+  const geo=classifyGeo(f), bs=classifyBS(m), dbg=geo.dbg;
+
+  // ===== 融合 =====
+  let fused={};for(const k of keys)fused[k]=wGeo*geo.sc[k]+(1-wGeo)*bs[k];
+  fused=norm(fused);
+  const poseConf=extreme?0.5:1;
+  for(const k in fused)if(k!=='neutral')fused[k]*=poseConf;
+  if(extreme)fused.neutral+=0.3;fused=norm(fused);
+  for(const k in sm)sm[k]=lerp(sm[k],fused[k],0.25);
+
+  let top='neutral',tv=-1;for(const k in sm)if(sm[k]>tv){tv=sm[k];top=k;}
+  moodEmoji.textContent=EMO[top].e;moodName.textContent=EMO[top].n;
+  moodHint.textContent=(baseline?'':'（未校准）')+'置信度 '+Math.round(tv*100)+'%';
+  for(const k of keys){const v=Math.round(sm[k]*100);barF[k].f.style.width=v+'%';barF[k].v.textContent=v+'%';}
+
+  const mk=[['嘴角上扬',dbg.nSmile],['张口',dbg.nOpen],['挑眉',dbg.nBrowUp],
+    ['皱眉挤压',dbg.nFurrow],['睁眼',dbg.nEyeWide],['突变(惊讶)',dbg.dynSurprise]];
+  const html=mk.map(([n,v])=>`<div>${n} <b>${Math.round(v*100)}%</b></div>`).join('');
+  if(html!==prevMetric){metricsEl.innerHTML=html;prevMetric=html;}
+  const deg=r=>Math.round(r*180/Math.PI);
+  poseEl.innerHTML=`Roll <b>${deg(pose.roll)}°</b>·Yaw <b>${(pose.yaw*45|0)}°</b>·Pitch <b>${(pose.pitch*45|0)}°</b>
+    ${extreme?'<span class="pill warn">姿态偏大·降权</span>':'<span class="pill">姿态良好</span>'}
+    ${baseline?'<span class="pill">已校准</span>':'<span class="pill warn">未校准</span>'}`;
+
+  // 动作标签(blendshape)
+  const acts=[];
+  if((m.jawOpen||0)>0.35)acts.push('😮 张嘴');
+  if(((m.mouthSmileLeft||0)+(m.mouthSmileRight||0))/2>0.4)acts.push('😊 微笑');
+  if((m.browInnerUp||0)>0.4)acts.push('🤨 挑眉');
+  if(((m.browDownLeft||0)+(m.browDownRight||0))/2>0.4)acts.push('😤 皱眉');
+  if((m.eyeBlinkLeft||0)>0.5&&(m.eyeBlinkRight||0)>0.5)acts.push('😑 闭眼');
+  else if((m.eyeBlinkLeft||0)>0.5)acts.push('😉 眨左眼');
+  else if((m.eyeBlinkRight||0)>0.5)acts.push('😉 眨右眼');
+  if((m.cheekPuff||0)>0.3)acts.push('🐡 鼓腮');
+  const tk=acts.join(',');if(tk!==prevTags){prevTags=tk;tagsEl.innerHTML=acts.length?acts.map(t=>`<span class="tag">${t}</span>`).join(''):'<span class="status">（做点动作试试）</span>';}
+
+  // ===== 绘制线条 =====
+  drawFeature(FaceLandmarker.FACE_LANDMARKS_FACE_OVAL,'#6cf0ff',2.4);
+  drawFeature(FaceLandmarker.FACE_LANDMARKS_LIPS,'#6cf0ff',2);
+  drawFeature(FaceLandmarker.FACE_LANDMARKS_LEFT_EYE,'#6cf0ff',1.8);
+  drawFeature(FaceLandmarker.FACE_LANDMARKS_RIGHT_EYE,'#6cf0ff',1.8);
+  drawFeature(FaceLandmarker.FACE_LANDMARKS_LEFT_EYEBROW,'#6cf0ff',2);
+  drawFeature(FaceLandmarker.FACE_LANDMARKS_RIGHT_EYEBROW,'#6cf0ff',2);
+  drawFeature(FaceLandmarker.FACE_LANDMARKS_LEFT_IRIS,'#9dfcff',1.4);
+  drawFeature(FaceLandmarker.FACE_LANDMARKS_RIGHT_IRIS,'#9dfcff',1.4);
+  drawNose();drawAxis();
+  if(showMuscle){
+    muscle(px(61),px(50),dbg.nSmile,'颧大肌');muscle(px(291),px(280),dbg.nSmile,'');
+    muscle(px(105),px(66),dbg.nBrowUp,'额肌');muscle(px(334),px(296),dbg.nBrowUp,'');
+    muscle(px(55),px(285),dbg.nFurrow,'皱眉肌');muscle(px(0),px(17),dbg.nOpen,'口轮匝肌');
+    muscle(px(61),px(43),dbg.nFrown,'降口角肌');muscle(px(291),px(273),dbg.nFrown,'');
+  }
+  // ===== 中间：黄色卡通脸(默认) 或 3D形象 =====
+  const mat=(res.facialTransformationMatrixes&&res.facialTransformationMatrixes.length)?res.facialTransformationMatrixes[0].data:null;
+  if(use3D){
+    latestVRM={bs:m,mat};
+  }else{
+    drawCartoon({
+      smile:((m.mouthSmileLeft||0)+(m.mouthSmileRight||0))/2,
+      frown:((m.mouthFrownLeft||0)+(m.mouthFrownRight||0))/2,
+      jaw:m.jawOpen||0,browUp:m.browInnerUp||0,
+      browDown:((m.browDownLeft||0)+(m.browDownRight||0))/2,
+      eyeWide:((m.eyeWideLeft||0)+(m.eyeWideRight||0))/2,
+      blinkL:m.eyeBlinkLeft||0,blinkR:m.eyeBlinkRight||0,
+      squint:((m.eyeSquintLeft||0)+(m.eyeSquintRight||0))/2,puff:m.cheekPuff||0
+    },top);
+  }
+  // ===== 情绪反馈伙伴 =====
+  updateCompanion(top,tv);
+}
+function drawFeature(conns,color,w){if(!conns)return;ctx.strokeStyle=color;ctx.lineWidth=w;ctx.lineJoin='round';ctx.lineCap='round';ctx.beginPath();
+  for(const c of conns){const a=px(c.start),b=px(c.end);ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);}ctx.stroke();}
+function drawNose(){const pts=[168,6,197,195,5,4];ctx.strokeStyle='#6cf0ff';ctx.lineWidth=1.8;ctx.beginPath();
+  const s=px(pts[0]);ctx.moveTo(s.x,s.y);for(let i=1;i<pts.length;i++){const p=px(pts[i]);ctx.lineTo(p.x,p.y);}
+  const tip=px(4),l=px(48),r=px(278);ctx.moveTo(l.x,l.y);ctx.lineTo(tip.x,tip.y);ctx.lineTo(r.x,r.y);ctx.stroke();}
+function drawAxis(){const top=px(10),chin=px(152),lc=px(234),rc=px(454);
+  ctx.strokeStyle='rgba(255,215,108,.55)';ctx.lineWidth=1.4;ctx.setLineDash([6,5]);
+  ctx.beginPath();ctx.moveTo(top.x,top.y);ctx.lineTo(chin.x,chin.y);ctx.moveTo(lc.x,lc.y);ctx.lineTo(rc.x,rc.y);ctx.stroke();ctx.setLineDash([]);}
+function muscle(a,b,act,label){const t=clamp(act),alpha=0.22+t*0.72;
+  ctx.strokeStyle=`rgba(255,90,122,${alpha})`;ctx.lineWidth=1.5+t*4;ctx.lineCap='round';
+  ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke();
+  const ang=Math.atan2(b.y-a.y,b.x-a.x),hl=6+t*6;ctx.beginPath();ctx.moveTo(b.x,b.y);
+  ctx.lineTo(b.x-hl*Math.cos(ang-0.4),b.y-hl*Math.sin(ang-0.4));ctx.moveTo(b.x,b.y);
+  ctx.lineTo(b.x-hl*Math.cos(ang+0.4),b.y-hl*Math.sin(ang+0.4));ctx.stroke();
+  if(label&&t>0.35){ctx.fillStyle=`rgba(255,180,195,${0.6+t*0.4})`;ctx.font='11px system-ui';ctx.fillText(label,(a.x+b.x)/2+4,(a.y+b.y)/2-4);}}
+
+// ===== Q版脸（可用采集到的个人特征个性化）=====
+function drawCartoon(f,mood){
+  const Wc=cartoon.width,Hc=cartoon.height;fctx.clearRect(0,0,Wc,Hc);
+  const cx=Wc/2,cy=Hc/2+8,R=118;
+  const A=avatarProfile;
+  const skin=A?A.skin:'#ffd9a8', skinEdge=A?shade(A.skin,-28):'#e0a878';
+  const bg={happy:'#3a3d2e',surprise:'#2e3550',sad:'#2b2f45',angry:'#42272e',neutral:'#20233d'};
+  fctx.fillStyle=bg[mood]||'#20233d';fctx.fillRect(0,0,Wc,Hc);
+
+  // 后层头发（大一圈，露在头顶两侧）
+  if(A&&A.hasHair){fctx.fillStyle=A.hair;
+    fctx.beginPath();fctx.arc(cx,cy-6,R+16,Math.PI*0.98,Math.PI*2.02);fctx.fill();
+    fctx.beginPath();fctx.arc(cx,cy-6,R+16,0,Math.PI);fctx.rect(cx-R-16,cy-6,(R+16)*2,-4);fctx.closePath();}
+
+  // 头（Q版大圆脸）
+  fctx.fillStyle=skin;fctx.strokeStyle=skinEdge;fctx.lineWidth=4;
+  fctx.beginPath();fctx.arc(cx,cy,R,0,7);fctx.fill();fctx.stroke();
+
+  // 前层刘海（盖住额头上部）
+  if(A&&A.hasHair){fctx.fillStyle=A.hair;
+    fctx.beginPath();
+    fctx.moveTo(cx-R*0.98,cy-R*0.15);
+    fctx.quadraticCurveTo(cx-R,cy-R,cx,cy-R*1.02);
+    fctx.quadraticCurveTo(cx+R,cy-R,cx+R*0.98,cy-R*0.15);
+    fctx.quadraticCurveTo(cx+R*0.5,cy-R*0.42,cx+R*0.18,cy-R*0.2);
+    fctx.quadraticCurveTo(cx,cy-R*0.45,cx-R*0.2,cy-R*0.2);
+    fctx.quadraticCurveTo(cx-R*0.5,cy-R*0.42,cx-R*0.98,cy-R*0.15);
+    fctx.closePath();fctx.fill();}
+
+  const smile=f.smile||0,jaw=f.jaw||0,browUp=f.browUp||0,browDown=f.browDown||0,frown=f.frown||0;
+  const eyeWide=f.eyeWide||0,squint=f.squint||0,blinkL=f.blinkL||0,blinkR=f.blinkR||0;
+  // Q版：眼睛更大更靠下
+  const eyeY=cy-6,eyeDX=48,eyeR=28,browBase=eyeY-42,browLift=browUp*22-browDown*14,ang=(browDown*0.5-browUp*0.2);
+  const browCol=A?A.hair:'#5a3d28';
+  fctx.strokeStyle=browCol;fctx.lineWidth=8;fctx.lineCap='round';
+  drawBrow(cx-eyeDX,browBase-browLift,-1,ang);drawBrow(cx+eyeDX,browBase-browLift,1,ang);
+  drawEye(cx-eyeDX,eyeY,eyeR,blinkL,eyeWide,squint);drawEye(cx+eyeDX,eyeY,eyeR,blinkR,eyeWide,squint);
+  // 眼镜
+  if(A&&A.glasses){fctx.strokeStyle='#2b2b3a';fctx.lineWidth=4;
+    fctx.beginPath();fctx.arc(cx-eyeDX,eyeY,eyeR+4,0,7);fctx.stroke();
+    fctx.beginPath();fctx.arc(cx+eyeDX,eyeY,eyeR+4,0,7);fctx.stroke();
+    fctx.beginPath();fctx.moveTo(cx-eyeDX+eyeR+4,eyeY);fctx.lineTo(cx+eyeDX-eyeR-4,eyeY);fctx.stroke();}
+  // 腮红
+  if(smile>0.3){fctx.fillStyle='rgba(255,120,140,'+Math.min(0.55,smile*0.7)+')';
+    fctx.beginPath();fctx.arc(cx-66,cy+30,16,0,7);fctx.fill();fctx.beginPath();fctx.arc(cx+66,cy+30,16,0,7);fctx.fill();}
+  // 嘴
+  const my=cy+62,open=jaw*46,curve=(smile-frown)*46;
+  fctx.strokeStyle='#b5453f';fctx.lineWidth=7;
+  if(open>8){fctx.beginPath();fctx.ellipse(cx,my+open*0.2,30,10+open*0.5,0,0,7);fctx.fillStyle='#7a2b2b';fctx.fill();fctx.stroke();
+    fctx.fillStyle='#e06a7a';fctx.beginPath();fctx.ellipse(cx,my+open*0.5,15,open*0.28,0,0,7);fctx.fill();}
+  else{fctx.beginPath();fctx.moveTo(cx-34,my);fctx.quadraticCurveTo(cx,my+curve,cx+34,my);fctx.stroke();}
+}
+function drawBrow(x,y,side,ang){fctx.beginPath();fctx.moveTo(x-22,y+side*ang*20);fctx.quadraticCurveTo(x,y-8,x+22,y-side*ang*20);fctx.stroke();}
+function drawEye(x,y,r,blink,wide,squint){const openF=Math.max(0.08,1-blink),h=r*(0.9+wide*0.5)*openF*(1-squint*0.4);
+  fctx.save();fctx.fillStyle='#fff';fctx.strokeStyle='#7a5a40';fctx.lineWidth=3;
+  fctx.beginPath();fctx.ellipse(x,y,r,h,0,0,7);fctx.fill();fctx.stroke();
+  if(openF>0.2){fctx.fillStyle='#33291f';const pr=Math.min(r*0.62,h*0.95);fctx.beginPath();fctx.arc(x,y,pr,0,7);fctx.fill();
+    fctx.fillStyle='#fff';fctx.beginPath();fctx.arc(x-pr*0.35,y-pr*0.35,pr*0.32,0,7);fctx.fill();}fctx.restore();}
+
+// ===== 采集照片 → 生成个性化 Q 版特征 =====
+function shade(hex,amt){let c=hex.replace('#','');if(c.length===3)c=c.split('').map(x=>x+x).join('');
+  let r=parseInt(c.slice(0,2),16),g=parseInt(c.slice(2,4),16),b=parseInt(c.slice(4,6),16);
+  r=Math.max(0,Math.min(255,r+amt));g=Math.max(0,Math.min(255,g+amt));b=Math.max(0,Math.min(255,b+amt));
+  return '#'+[r,g,b].map(v=>v.toString(16).padStart(2,'0')).join('');}
+function toHex(r,g,b){return '#'+[r,g,b].map(v=>Math.round(v).toString(16).padStart(2,'0')).join('');}
+function bright(c){return 0.299*c[0]+0.587*c[1]+0.114*c[2];}
+function sampleAt(data,w,h,nx,ny){ // nx,ny 归一化(未镜像) 取 5x5 平均
+  const x=Math.round(nx*w),y=Math.round(ny*h);let r=0,g=0,b=0,n=0;
+  for(let dy=-2;dy<=2;dy++)for(let dx=-2;dx<=2;dx++){
+    const xx=x+dx,yy=y+dy;if(xx<0||yy<0||xx>=w||yy>=h)continue;
+    const i=(yy*w+xx)*4;r+=data[i];g+=data[i+1];b+=data[i+2];n++;}
+  return n?[r/n,g/n,b/n]:null;}
+function median(arr){const s=arr.filter(Boolean).sort((a,b)=>bright(a)-bright(b));return s.length?s[Math.floor(s.length/2)]:null;}
+
+function captureAvatar(){
+  if(!lastLandmarks){statusEl.textContent='先让脸出现在画面里，再点生成';return;}
+  const L=lastLandmarks, vw=video.videoWidth,vh=video.videoHeight;
+  off.width=vw;off.height=vh;offc.drawImage(video,0,0,vw,vh);
+  const data=offc.getImageData(0,0,vw,vh).data;
+  const S=(i)=>sampleAt(data,vw,vh,L[i].x,L[i].y);
+  // 肤色：多点脸颊/鼻/额取中位数
+  const skinPts=[1,50,280,205,425,10,151,352,123].map(S).filter(Boolean);
+  const skin=median(skinPts)||[255,217,168];
+  // 发色：额上方几个点（若越界或与肤色接近则判为无明显头发）
+  const hairSamples=[];
+  [[10,-0.10],[67,-0.07],[297,-0.07],[103,-0.05],[332,-0.05]].forEach(([i,dy])=>{
+    const ny=L[i].y+dy; if(ny>0.02){const c=sampleAt(data,vw,vh,L[i].x,ny);if(c)hairSamples.push(c);}});
+  const hairC=median(hairSamples);
+  const hasHair = hairC ? (bright(hairC) < bright(skin)-24) : true;
+  const hairHex = hairC ? toHex(...hairC) : '#3a2c26';
+  avatarProfile={
+    skin: toHex(...skin),
+    hair: hairHex,
+    hasHair,
+    glasses: glassChk.checked,
+  };
+  avatarProfile.glasses=false;
+}
+
+// ===================== 3D 形象 (VRM) =====================
+let latestVRM=null, renderer,scene,camera,controls,clock,currentVrm=null,mirror=true,showBody=true,use3D=false;
+let headEuler={x:0,y:0,z:0};
+btn3d.onclick=()=>{
+  use3D=!use3D;
+  btn3d.textContent='🧑 3D人物：'+(use3D?'开':'关');
+  cartoon.style.display=use3D?'none':'block';
+  avatarWrap.style.display=use3D?'block':'none';
+  midTitle.textContent=use3D?'我的3D形象（镜像你的表情）':'我的Q版脸（镜像你的动作）';
+  if(use3D){
+    if(!renderer){initThree();}
+    if(!currentVrm){fetch('./models/avatar.vrm',{method:'HEAD'}).then(r=>{if(r.ok)loadVRM('./models/avatar.vrm');else avatarHint.innerHTML='没找到 avatar.vrm<br>点「📦 加载.vrm形象」选一个';}).catch(()=>{});}
+    // 显示后修正画布尺寸
+    setTimeout(()=>{if(renderer){const w=avatarWrap.clientWidth,h=avatarWrap.clientHeight;camera.aspect=w/h;camera.updateProjectionMatrix();renderer.setSize(w,h);}},50);
+  }
+};
+function initThree(){
+  const w=avatarWrap.clientWidth||480,h=avatarWrap.clientHeight||360;
+  renderer=new THREE.WebGLRenderer({antialias:true,alpha:true});
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));renderer.setSize(w,h);
+  avatarWrap.appendChild(renderer.domElement);
+  scene=new THREE.Scene();
+  camera=new THREE.PerspectiveCamera(28,w/h,0.1,20);camera.position.set(0,1.4,0.8);
+  controls=new OrbitControls(camera,renderer.domElement);controls.target.set(0,1.4,0);controls.enableDamping=true;controls.update();
+  scene.add(new THREE.AmbientLight(0xffffff,1.4));
+  const d=new THREE.DirectionalLight(0xffffff,2.0);d.position.set(1,2,2);scene.add(d);
+  clock=new THREE.Clock();animate3d();
+  window.addEventListener('resize',()=>{if(!renderer)return;const w=avatarWrap.clientWidth,h=avatarWrap.clientHeight;camera.aspect=w/h;camera.updateProjectionMatrix();renderer.setSize(w,h);});
+}
+const KEEP=/face|hair|head|eye|brow|lash|mouth|teeth|tongue|tooth/i;
+function applyBodyVisibility(){if(!currentVrm)return;currentVrm.scene.traverse(o=>{if(o.isMesh){const nm=(o.name||'')+'|'+((o.parent&&o.parent.name)||'');o.visible=showBody?true:KEEP.test(nm);}});}
+function poseArms(){if(!currentVrm||!currentVrm.humanoid)return;const h=currentVrm.humanoid;const set=(n,x,y,z)=>{const b=h.getNormalizedBoneNode(n);if(b)b.rotation.set(x,y,z);};
+  set('leftUpperArm',0,0,-1.15);set('rightUpperArm',0,0,1.15);set('leftLowerArm',0,-0.2,-0.1);set('rightLowerArm',0,0.2,0.1);}
+function loadVRM(url){
+  if(!renderer)initThree();
+  statusEl.textContent='加载形象中…';
+  const loader=new GLTFLoader();loader.register(p=>new VRMLoaderPlugin(p));
+  loader.load(url,(gltf)=>{
+    const vrm=gltf.userData.vrm;
+    if(currentVrm){scene.remove(currentVrm.scene);VRMUtils.deepDispose(currentVrm.scene);}
+    VRMUtils.removeUnnecessaryVertices(gltf.scene);VRMUtils.rotateVRM0(vrm);
+    currentVrm=vrm;scene.add(vrm.scene);vrm.update(0);poseArms();applyBodyVisibility();
+    const head=vrm.humanoid?.getNormalizedBoneNode('head');
+    if(head){const p=new THREE.Vector3();head.getWorldPosition(p);
+      camera.position.set(p.x,p.y-0.05,p.z+0.8);controls.target.set(p.x,p.y-0.18,p.z);controls.update();}
+    if(avatarHint)avatarHint.style.display='none';statusEl.textContent='✅ 形象已加载';
+  },undefined,(err)=>{statusEl.textContent='形象加载失败：'+(err?.message||err);});
+}
+vrmFile.onchange=e=>{const f=e.target.files[0];if(f)loadVRM(URL.createObjectURL(f));};
+avatarWrap.addEventListener('dragover',e=>e.preventDefault());
+avatarWrap.addEventListener('drop',e=>{e.preventDefault();const f=e.dataTransfer.files[0];if(f&&f.name.endsWith('.vrm'))loadVRM(URL.createObjectURL(f));});
+bodyBtn.onclick=()=>{showBody=!showBody;bodyBtn.textContent='🧍 身体：'+(showBody?'显示':'隐藏');applyBodyVisibility();};
+function swapLR(n){if(n.endsWith('Left'))return n.slice(0,-4)+'Right';if(n.endsWith('Right'))return n.slice(0,-5)+'Left';return n;}
+function animate3d(){
+  requestAnimationFrame(animate3d);
+  const dt=clock?clock.getDelta():0;
+  if(currentVrm){
+    poseArms();                       // 每帧确保手臂放下（不依赖是否检测到人脸）
+    if(latestVRM){
+    const em=currentVrm.expressionManager, bs=latestVRM.bs, cl=v=>Math.max(0,Math.min(1,v||0));
+    if(em){
+      const gg=n=>bs[n]||0;
+      const smile=(gg('mouthSmileLeft')+gg('mouthSmileRight'))/2;
+      let bl=gg('eyeBlinkLeft'),br=gg('eyeBlinkRight');if(mirror){const t=bl;bl=br;br=t;}
+      const S=(n,v)=>{try{em.setValue(n,cl(v));}catch(e){}};
+      S('happy',smile*1.1);S('aa',gg('jawOpen')*1.1);S('ou',gg('mouthPucker')*0.9);S('oh',gg('mouthFunnel')*0.9);
+      S('blinkLeft',bl);S('blinkRight',br);S('blink',0);
+      S('angry',(gg('browDownLeft')+gg('browDownRight'))/2*0.8);
+      S('sad',Math.max((gg('mouthFrownLeft')+gg('mouthFrownRight'))/2,gg('browInnerUp')*0.5)*0.7);
+      S('surprised',Math.max((gg('eyeWideLeft')+gg('eyeWideRight'))/2,gg('browInnerUp')*0.7)*0.6);
+    }
+    const head=currentVrm.humanoid?.getNormalizedBoneNode('head');
+    if(head){let tx=0,ty=0,tz=0;
+      if(latestVRM.mat){const e=new THREE.Euler().setFromRotationMatrix(new THREE.Matrix4().fromArray(latestVRM.mat),'YXZ');
+        ty=(mirror?-1:1)*e.y*0.9;tx=e.x*0.8;tz=(mirror?-1:1)*e.z*0.9;
+        ty=Math.max(-0.7,Math.min(0.7,ty));tx=Math.max(-0.5,Math.min(0.5,tx));tz=Math.max(-0.5,Math.min(0.5,tz));}
+      headEuler.x+=(tx-headEuler.x)*0.3;headEuler.y+=(ty-headEuler.y)*0.3;headEuler.z+=(tz-headEuler.z)*0.3;
+      head.rotation.set(headEuler.x,headEuler.y,headEuler.z);}
+    }
+    currentVrm.update(dt);            // 无论有没有人脸都更新，让手臂姿势生效
+  }
+  if(controls)controls.update();
+  if(renderer)renderer.render(scene,camera);
+}
+
+// ===================== 情绪反馈伙伴 =====================
+// 它不是镜像你，而是对你的情绪做出"回应"：你开心它替你高兴，你难过它来安慰。
+const REACT={
+  happy:   {react:'happy',  color:'#ffcf5a', lines:['看到你笑，我也超开心！😄','你今天状态真好呀～','这个笑容我给满分！✨','开心就要一起分享！🎉']},
+  surprise:{react:'surprise',color:'#7cc4ff', lines:['哦？发生什么啦？😮','哇，被你吓一跳！','这么惊讶，快跟我说说～','什么事这么意外？']},
+  sad:     {react:'comfort', color:'#9db4ff', lines:['别难过，我陪着你～🫂','怎么了？抱抱你','会好起来的，相信我','深呼吸，一切都会没事的']},
+  angry:   {react:'calm',    color:'#ff9db0', lines:['先别急，慢慢说～','深呼吸，放轻松点','我懂你的感受，冷静一下','喝口水，消消气嘛']},
+  neutral: {react:'idle',    color:'#8fe6c0', lines:['我在这儿陪着你～','做个表情让我看看？','今天过得怎么样？','随便动动脸，我会回应你']},
+};
+let compEmo='neutral', compShown='', bubbleIdx=0, emoStableFrames=0, tHold=0;
+let compTarget='idle', compCur={mouth:0,brow:0,eye:1}, compTime=0;
+
+function updateCompanion(top,conf){
+  // 情绪需要稳定若干帧、且有一定置信度，才触发新回应（像"看清楚了才回应"）
+  if(top===compEmo){emoStableFrames++;}
+  else{compEmo=top;emoStableFrames=0;}
+  if(emoStableFrames===6 || (compShown==='' )){
+    if(top!==compShown || compShown===''){
+      compShown=top; const r=REACT[top];
+      bubbleIdx=(bubbleIdx+1)%r.lines.length;
+      bubble.textContent=r.lines[bubbleIdx];
+      bubble.style.background='rgba(255,255,255,.06)';
+      bubble.style.borderColor=r.color;
+      bubble.style.color=r.color;
+      compTarget=r.react;
+    }
+  }
+  compTime+=0.05;
+  drawCompanion(compTarget,conf);
+}
+
+function drawCompanion(react,conf){
+  const W=companion.width,H=companion.height,cx=W/2;
+  // 呼吸/点头式轻微浮动
+  const bob=Math.sin(compTime*2)*4;
+  const cy=H/2+bob;
+  const R=110;
+  const bgc={happy:'#2e3a2a',surprise:'#26314a',comfort:'#2a2f4a',calm:'#3a2730',idle:'#20233d'};
+  gctx.fillStyle=bgc[react]||'#20233d';gctx.fillRect(0,0,W,H);
+
+  // 身体（圆润小机器人/精灵）
+  gctx.save();
+  const bodyCol={happy:'#ffe08a',surprise:'#a9d4ff',comfort:'#b9c6ff',calm:'#ffc2cf',idle:'#a9e6c9'};
+  gctx.fillStyle=bodyCol[react]||'#a9e6c9';
+  gctx.strokeStyle='rgba(0,0,0,.15)';gctx.lineWidth=3;
+  gctx.beginPath();gctx.arc(cx,cy,R,0,7);gctx.fill();gctx.stroke();
+  // 头顶小天线
+  gctx.strokeStyle=gctx.fillStyle;gctx.lineWidth=4;
+  gctx.beginPath();gctx.moveTo(cx,cy-R);gctx.lineTo(cx,cy-R-22);gctx.stroke();
+  const blink=(Math.sin(compTime*1.3)>0.98)?0.85:0; // 偶尔眨眼
+  gctx.beginPath();gctx.arc(cx,cy-R-26,6+Math.sin(compTime*3)*1.5,0,7);
+  gctx.fillStyle='#fff';gctx.fill();
+  gctx.restore();
+
+  const eyeY=cy-16,eyeDX=42;
+  // 各种回应的表情
+  gctx.fillStyle='#2b2b3a';gctx.strokeStyle='#2b2b3a';gctx.lineCap='round';
+  if(react==='happy'){
+    // 弯月笑眼 + 大笑嘴 + 星星
+    happyEye(cx-eyeDX,eyeY);happyEye(cx+eyeDX,eyeY);
+    gctx.lineWidth=7;gctx.beginPath();gctx.arc(cx,cy+22,40,0.15*Math.PI,0.85*Math.PI);gctx.stroke();
+    star(cx-R+6,cy-R+30,7);star(cx+R-10,cy-R+18,9);
+  }else if(react==='surprise'){
+    // 大圆眼 + O型嘴
+    roundEye(cx-eyeDX,eyeY,16,blink);roundEye(cx+eyeDX,eyeY,16,blink);
+    gctx.fillStyle='#2b2b3a';gctx.beginPath();gctx.ellipse(cx,cy+30,16,20,0,0,7);gctx.fill();
+    gctx.fillStyle='#ffd76c';gctx.font='bold 30px system-ui';gctx.fillText('!',cx+R-2,cy-R+34);
+  }else if(react==='comfort'){
+    // 关切的下垂眉 + 温柔小眼 + 轻微笑安慰 + 爱心
+    gctx.lineWidth=5;
+    gctx.beginPath();gctx.moveTo(cx-eyeDX-16,eyeY-14);gctx.lineTo(cx-eyeDX+14,eyeY-6);gctx.stroke();
+    gctx.beginPath();gctx.moveTo(cx+eyeDX+16,eyeY-14);gctx.lineTo(cx+eyeDX-14,eyeY-6);gctx.stroke();
+    roundEye(cx-eyeDX,eyeY,9,0);roundEye(cx+eyeDX,eyeY,9,0);
+    gctx.lineWidth=6;gctx.beginPath();gctx.arc(cx,cy+30,26,0.1*Math.PI,0.9*Math.PI);gctx.stroke();
+    heart(cx+R-16,cy-R+34,10);
+  }else if(react==='calm'){
+    // 半闭安抚眼 + 平嘴 + 汗滴
+    gctx.lineWidth=6;
+    gctx.beginPath();gctx.moveTo(cx-eyeDX-13,eyeY);gctx.quadraticCurveTo(cx-eyeDX,eyeY+8,cx-eyeDX+13,eyeY);gctx.stroke();
+    gctx.beginPath();gctx.moveTo(cx+eyeDX-13,eyeY);gctx.quadraticCurveTo(cx+eyeDX,eyeY+8,cx+eyeDX+13,eyeY);gctx.stroke();
+    gctx.beginPath();gctx.moveTo(cx-24,cy+30);gctx.lineTo(cx+24,cy+30);gctx.stroke();
+    gctx.fillStyle='#7cc4ff';gctx.beginPath();gctx.ellipse(cx+eyeDX+22,eyeY+6,5,8,0,0,7);gctx.fill();
+  }else{
+    // idle：友好眨眼 + 小微笑
+    roundEye(cx-eyeDX,eyeY,11,blink);roundEye(cx+eyeDX,eyeY,11,blink);
+    gctx.lineWidth=6;gctx.beginPath();gctx.arc(cx,cy+26,22,0.15*Math.PI,0.85*Math.PI);gctx.stroke();
+  }
+  // 腮红（开心/安慰时）
+  if(react==='happy'||react==='comfort'){
+    gctx.fillStyle='rgba(255,120,140,.35)';
+    gctx.beginPath();gctx.arc(cx-58,cy+16,14,0,7);gctx.fill();
+    gctx.beginPath();gctx.arc(cx+58,cy+16,14,0,7);gctx.fill();
+  }
+}
+function roundEye(x,y,r,blink){
+  const h=Math.max(1.5,r*(1-blink));
+  gctx.fillStyle='#fff';gctx.beginPath();gctx.ellipse(x,y,r,h,0,0,7);gctx.fill();
+  gctx.fillStyle='#2b2b3a';gctx.beginPath();gctx.arc(x,y,Math.min(r*0.6,h),0,7);gctx.fill();
+}
+function happyEye(x,y){gctx.lineWidth=6;gctx.strokeStyle='#2b2b3a';
+  gctx.beginPath();gctx.arc(x,y+6,13,1.15*Math.PI,1.85*Math.PI);gctx.stroke();}
+function star(x,y,s){gctx.save();gctx.fillStyle='#fff6b0';gctx.translate(x,y);
+  gctx.beginPath();for(let i=0;i<5;i++){const a=i*4*Math.PI/5-Math.PI/2;
+    gctx[i?'lineTo':'moveTo'](Math.cos(a)*s,Math.sin(a)*s);}gctx.closePath();gctx.fill();gctx.restore();}
+function heart(x,y,s){gctx.save();gctx.fillStyle='#ff7a95';gctx.translate(x,y);gctx.beginPath();
+  gctx.moveTo(0,s*0.3);gctx.bezierCurveTo(0,-s*0.3,-s,-s*0.3,-s,s*0.2);
+  gctx.bezierCurveTo(-s,s*0.7,0,s,0,s*1.1);
+  gctx.bezierCurveTo(0,s,s,s*0.7,s,s*0.2);
+  gctx.bezierCurveTo(s,-s*0.3,0,-s*0.3,0,s*0.3);gctx.fill();gctx.restore();}
+drawCompanion('idle',0);
+</script>
+</body>
+</html>
