@@ -55,7 +55,14 @@ bash deploy/thor/start_kiosk.sh          # 全屏，自动开摄像头，自动�
 KIOSK=0 bash deploy/thor/start_kiosk.sh  # 普通窗口，调试用（Alt+F4 / Ctrl+Q 退出 kiosk）
 ```
 
+**第一次运行**会弹出摄像头权限框：选 **RealSenseRGB**，勾选「记住此决定」，点允许。以后启动就自动选中了。
+
 看到页面下方「🧠 连续情绪 · 安全社交距离」面板显示 **GRU-D 已加载**，就说明新算法在跑。
+
+> 实测（JetPack 7 + snap 版 Firefox 156 + D415）：
+> - 系统自带 ffmpeg 没编 v4l2 输入 → 脚本自动改用 GStreamer 喂流（也可以自己在另一个终端手动跑，脚本检测到就不会重复开）：
+>   `gst-launch-1.0 v4l2src device=/dev/video4 ! video/x-raw,format=YUY2,width=640,height=480,framerate=30/1 ! v4l2sink device=/dev/video10 sync=false`
+> - snap 版 Firefox 在沙盒里用不到 NVIDIA 驱动，WebGL 是软件模拟 → MediaPipe 走 GPU 反而卡；脚本默认 `delegate=CPU`，流畅。
 把脸移出画面：面板标红「丢帧·外推」，距离仍在连续输出（旧版这时会整页冻结）。
 
 ## 第 5 步 · 给机器人控制端用
@@ -80,7 +87,8 @@ curl -s http://localhost:8002/api/affect
 
 | 现象 | 处理 |
 |---|---|
-| 状态栏显示「模型就绪(CPU)」 | Firefox 没给 WebGL，MediaPipe 自动退回 CPU，能用但慢。地址栏开 `about:support` 看 WebGL；可试 `MOZ_ENABLE_WAYLAND=1` 或换 X11 会话 |
+| 画面/线条卡顿 | 确认地址里有 `delegate=CPU`（snap 版 Firefox 的 GPU 是软件模拟，反而慢）；还卡就 `sudo nvpmodel -m 0 && sudo jetson_clocks` |
+| `Starting videoinput failed` | Firefox 打开了深度节点：确认没在 profile 里自动授权摄像头，在权限框里手动选 RealSenseRGB；并确认喂流在跑（`pgrep -af video10`） |
 | 面板「模型未加载」 | `static/models/grud_safety.json` 不在 / 拼错名 |
 | 下拉里没有 RealSenseRGB | `lsmod \| grep v4l2loopback`；没加载就按 setup 脚本的提示从源码编；`cat /tmp/faceecho_ffmpeg.log` |
 | RealSense 本身不出图 | JetPack 7 上 librealsense / 内核补丁支持仍在完善中，先用 `v4l2-ctl --list-devices` 确认系统认到相机；实在不行先用 USB 摄像头 |

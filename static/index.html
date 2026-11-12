@@ -218,7 +218,7 @@ async function init(){
       baseOptions:{modelAssetPath:"./models/face_landmarker.task",delegate},
       outputFaceBlendshapes:true, outputFacialTransformationMatrixes:true, runningMode:"VIDEO", numFaces:1});
     // 优先 GPU(WebGL)；某些 Jetson/Wayland 浏览器禁用 WebGL 时自动退回 CPU，不至于整页不可用
-    let dlg='GPU';try{lm=await mk('GPU');}catch(err){console.warn('GPU delegate 失败，改用 CPU：',err);dlg='CPU';lm=await mk('CPU');}
+    let dlg=(new URLSearchParams(location.search).get('delegate')||'GPU').toUpperCase();try{lm=await mk(dlg);}catch(err){console.warn(dlg+' delegate 失败，改用 CPU：',err);dlg='CPU';lm=await mk('CPU');}
     statusEl.textContent=`模型就绪(${dlg})，点击"开启摄像头"`;startBtn.disabled=false;drawCartoon({},'neutral');
     if(new URLSearchParams(location.search).get('autostart')==='1')startCamera();   // kiosk/机器人：免点击直接开摄像头
   }catch(e){statusEl.textContent='模型加载失败：'+e.message;}

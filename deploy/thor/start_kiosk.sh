@@ -2,8 +2,11 @@
 # 在 Jetson 上启动 FaceEcho：(RealSense 喂流) → 网页服务器 → Firefox 全屏 kiosk（自动授权摄像头、开启 /api/affect）
 #   bash deploy/thor/start_kiosk.sh            # 全屏
 #   KIOSK=0 bash deploy/thor/start_kiosk.sh    # 普通窗口（调试用）
+#   DELEGATE=GPU bash deploy/thor/start_kiosk.sh  # 浏览器能用上 NVIDIA 驱动时再试 GPU（snap 版 Firefox 用不上，默认 CPU）
+#
+# 第一次运行会弹摄像头权限框：选 RealSenseRGB，勾「记住此决定」。之后页面会自动选中它。
 cd "$(dirname "$0")/../.." || exit 1
-APP="$(pwd)"; PORT="${PORT:-8002}"; URL="http://localhost:$PORT/?robot=1&autostart=1"
+APP="$(pwd)"; PORT="${PORT:-8002}"; URL="http://localhost:$PORT/?robot=1&autostart=1&delegate=${DELEGATE:-CPU}"
 PY="$APP/.venv/bin/python"; [ -x "$PY" ] || PY=python3
 
 # 1) RealSense：找到彩色(YUYV)节点，喂给 v4l2loopback 的 /dev/video10（普通 USB 摄像头会自动跳过）
@@ -32,13 +35,13 @@ if ! curl -s -o /dev/null "http://localhost:$PORT/"; then
   for i in $(seq 1 30); do curl -s -o /dev/null "http://localhost:$PORT/" && break; sleep 0.5; done
 fi
 
-# 3) Firefox 专用 profile：自动允许摄像头（只用于这个本机 kiosk 页面）
+# 3) Firefox 专用 profile
+#    不自动授权摄像头：自动授权时 Firefox 不暴露设备名、会默认打开 RealSense 的深度节点而失败。
+#    第一次手动选 RealSenseRGB 并勾“记住”，以后就自动了。
 #    snap 版 Firefox 只能访问 ~/snap/firefox/common 之类目录，所以 profile 放那里
 if snap list firefox >/dev/null 2>&1; then PROF="$HOME/snap/firefox/common/faceecho-kiosk"; else PROF="$HOME/.faceecho-firefox"; fi
 mkdir -p "$PROF"
 cat > "$PROF/user.js" <<'EOF'
-user_pref("media.navigator.permission.disabled", true);
-user_pref("permissions.default.camera", 1);
 user_pref("browser.shell.checkDefaultBrowser", false);
 user_pref("browser.sessionstore.resume_from_crash", false);
 user_pref("datareporting.policy.dataSubmissionEnabled", false);
