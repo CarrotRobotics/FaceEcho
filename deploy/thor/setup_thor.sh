@@ -45,7 +45,7 @@ sudo apt-get install -y -qq v4l-utils >/dev/null || true
 
 if [ "$WITH_RS" = 1 ]; then
   say "[RealSense] v4l2loopback + ffmpeg"
-  sudo apt-get install -y -qq ffmpeg v4l2loopback-dkms || true
+  sudo apt-get install -y -qq ffmpeg v4l2loopback-dkms gstreamer1.0-tools gstreamer1.0-plugins-good || true
   # Jetson 内核需要对应的 headers 才能编 DKMS；包名随 L4T 版本可能不同，装不上不致命
   dpkg -l | grep -q nvidia-l4t-kernel-headers || sudo apt-get install -y -qq nvidia-l4t-kernel-headers 2>/dev/null || true
   if sudo modprobe v4l2loopback video_nr=10 card_label="RealSenseRGB" exclusive_caps=1 2>/dev/null; then

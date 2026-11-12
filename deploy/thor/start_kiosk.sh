@@ -7,14 +7,21 @@ APP="$(pwd)"; PORT="${PORT:-8002}"; URL="http://localhost:$PORT/?robot=1&autosta
 PY="$APP/.venv/bin/python"; [ -x "$PY" ] || PY=python3
 
 # 1) RealSense：找到彩色(YUYV)节点，喂给 v4l2loopback 的 /dev/video10（普通 USB 摄像头会自动跳过）
-if command -v v4l2-ctl >/dev/null && [ -e /dev/video10 ] && ! pgrep -f "f v4l2 /dev/video10" >/dev/null; then
+#    JetPack 自带的 ffmpeg 常常没编 v4l2 输入 → 自动改用 GStreamer
+if command -v v4l2-ctl >/dev/null && [ -e /dev/video10 ] && ! pgrep -f "/dev/video10" >/dev/null; then
   for d in /dev/video*; do
     [ "$d" = /dev/video10 ] && continue
     if v4l2-ctl -d "$d" --info 2>/dev/null | grep -qi realsense && v4l2-ctl -d "$d" --list-formats 2>/dev/null | grep -q YUYV; then
-      echo "RealSense 彩色节点：$d → /dev/video10"
-      nohup ffmpeg -loglevel error -use_wallclock_as_timestamps 1 -f v4l2 -input_format yuyv422 \
-        -video_size 640x480 -framerate 30 -i "$d" -pix_fmt yuyv422 -f v4l2 /dev/video10 >/tmp/faceecho_ffmpeg.log 2>&1 &
-      sleep 1; break
+      if ffmpeg -hide_banner -devices 2>/dev/null | grep -qi v4l2; then
+        echo "RealSense 彩色节点：$d → /dev/video10 (ffmpeg)"
+        nohup ffmpeg -loglevel error -use_wallclock_as_timestamps 1 -f v4l2 -input_format yuyv422 \
+          -video_size 640x480 -framerate 30 -i "$d" -pix_fmt yuyv422 -f v4l2 /dev/video10 >/tmp/faceecho_ffmpeg.log 2>&1 &
+      else
+        echo "RealSense 彩色节点：$d → /dev/video10 (GStreamer)"
+        nohup gst-launch-1.0 -q v4l2src device="$d" ! video/x-raw,format=YUY2,width=640,height=480,framerate=30/1 \
+          ! v4l2sink device=/dev/video10 sync=false >/tmp/faceecho_ffmpeg.log 2>&1 &
+      fi
+      sleep 2; break
     fi
   done
 fi
