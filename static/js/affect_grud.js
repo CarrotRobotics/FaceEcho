@@ -106,7 +106,7 @@ export class SafeAffectEstimator {
 
 // VA -> 伙伴反应类别（给“情绪反馈伙伴”用；阈值可调）
 export function vaToMood(v, a) {
-  if (v > 0.25) return a > 0.45 ? 'surprise' : 'happy';
+  if (v > 0.25) return 'happy';
   if (v < -0.2) return a > 0.2 ? 'angry' : 'sad';
   if (a > 0.45) return 'surprise';
   return 'neutral';
