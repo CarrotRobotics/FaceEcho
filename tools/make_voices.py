@@ -8,17 +8,19 @@
     pip install edge-tts
     cd ~/FaceEcho
     python tools/make_voices.py
-产物：static/voice/{ja,zh,en}/{happy,surprise,sad,angry,neutral}_{0..3}.mp3 + manifest.json
+产物：static/voice/{ja,zh,en}/{happy,surprise,sad,angry,neutral}_{0..3}.mp3（网页用）
+      + 同名 .wav（16kHz 单声道，M5Stack CoreS3 用，需要 ffmpeg）+ manifest.json
 然后 git commit 推上去，Thor 上 git pull 就有了（文件很小，一共约 1 MB）。
 
 换声音：--ja / --zh / --en 指定声音名（edge-tts --list-voices 可查看）。
 只重做某种语言：--langs ja
 """
-import argparse, asyncio, json, os, re, sys
+import argparse, asyncio, json, os, re, shutil, subprocess, sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 STATIC = os.path.join(ROOT, "static")
 DEFAULT_VOICES = {"ja": "ja-JP-NanamiNeural", "zh": "zh-CN-XiaoxiaoNeural", "en": "en-US-AriaNeural"}
+FFMPEG = None
 EMOJI = re.compile("[\U0001F000-\U0001FAFF☀-➿️‍]")
 
 
@@ -38,6 +40,10 @@ async def main():
     except ImportError:
         sys.exit("先安装：pip install edge-tts")
 
+    global FFMPEG
+    FFMPEG = shutil.which('ffmpeg')
+    if not FFMPEG:
+        print('！没找到 ffmpeg：只生成 mp3（网页用）；CoreS3 需要 wav → sudo apt install ffmpeg 后重跑')
     i18n = json.load(open(os.path.join(STATIC, "i18n.json"), encoding="utf-8"))
     man_path = os.path.join(STATIC, "voice", "manifest.json")
     manifest = json.load(open(man_path)) if os.path.exists(man_path) else {}
@@ -52,6 +58,9 @@ async def main():
                 key = f"{emo}_{i}"
                 path = os.path.join(out_dir, key + ".mp3")
                 await edge_tts.Communicate(clean(text), voice, rate=a.rate).save(path)
+                if FFMPEG:   # M5Stack CoreS3 用：16kHz 单声道 16bit WAV
+                    subprocess.run([FFMPEG, '-y', '-loglevel', 'error', '-i', path, '-ar', '16000', '-ac', '1',
+                                    '-sample_fmt', 's16', '-map_metadata', '-1', '-fflags', '+bitexact', path[:-4] + '.wav'], check=True)
                 keys.append(key)
                 print(f"[{lang}] {key}.mp3  ←  {clean(text)}")
         manifest[lang] = keys

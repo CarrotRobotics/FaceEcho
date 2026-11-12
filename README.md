@@ -207,6 +207,7 @@ curl localhost:8002/api/affect                           # 机器人控制端读
   - 优先播放 `static/voice/{ja,zh,en}/*.mp3`：在能上网的电脑上跑一次 `pip install edge-tts && python tools/make_voices.py` 生成（约 1 MB），提交进仓库后 Thor 离线也能用，音质最好。
   - 没有音频文件时，退回浏览器/系统自带的语音合成；系统没有该语言的声音时，伙伴下方会提示。
 - Thor 本身没有喇叭：需要显示器喇叭（HDMI/DP）、USB 音箱/耳机或蓝牙音箱。
+- **M5Stack CoreS3 当机器人的脸和嘴**（Wi-Fi，不占 USB 口）：见 [cores3/README.md](cores3/README.md)。
 
 ## 使用步骤（打开页面后）
 

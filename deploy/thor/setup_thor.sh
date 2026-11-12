@@ -69,7 +69,7 @@ After=network.target
 
 [Service]
 WorkingDirectory=$APP
-Environment=HOST=127.0.0.1
+Environment=HOST=0.0.0.0
 Environment=PORT=8002
 ExecStart=$APP/.venv/bin/python $APP/app.py
 Restart=on-failure

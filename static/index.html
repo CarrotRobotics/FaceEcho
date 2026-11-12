@@ -186,7 +186,7 @@ import { FaceLandmarker, FilesetResolver }
   from "./mediapipe/vision_bundle.mjs";
 import { SafeAffectEstimator, vaToMood } from "./js/affect_grud.js";
 import { initI18n, t, setLang, onLang, getLang, applyStatic } from "./js/i18n.js";
-import { CompanionVoice } from "./js/voice.js";
+import { CompanionVoice, clean } from "./js/voice.js";
 await initI18n(); applyStatic();
 const voice=new CompanionVoice();
 let lastStatus=['st_loading',{}];
@@ -236,6 +236,7 @@ async function init(){
 init();
 
 // ===== 连续情绪 · 安全距离（FaceLNN GRU-D）=====
+let compSay={id:0,line:'',lang:'ja',text:''};   // 伙伴最近说的一句（推给 CoreS3 等外部设备）
 let affEst=null, driveByVA=false, affLast=null, affPostBusy=false, affPostT=0;
 const affHist=[]; const AFF_WIN=12;          // 轨迹窗口（秒）
 const affState=$('affState'), driveBtn=$('driveBtn'), robotChk=$('robotChk'), affHint=$('affHint');
@@ -273,7 +274,8 @@ function postAffect(o){
   affPostT=now;affPostBusy=true;
   fetch('./api/affect',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({v:o.v,a:o.a,dist:o.dist,dist_raw:o.distRaw,observed:o.observed,gap_s:o.gap,
-      mood:vaToMood(o.v,o.a),t_client:Date.now()/1000})})
+      mood:vaToMood(o.v,o.a),t_client:Date.now()/1000,
+      comp_mood:compShown||'neutral',say_id:compSay.id,say_line:compSay.line,say_lang:compSay.lang,say_text:compSay.text})})
     .catch(()=>{}).finally(()=>{affPostBusy=false;});
 }
 function drawAffect(){
@@ -784,6 +786,7 @@ function updateCompanion(top,conf){
       bubbleIdx=(bubbleIdx+1)%lines.length;
       bubble.textContent=lines[bubbleIdx];
       voice.say(lines[bubbleIdx],`${top}_${bubbleIdx}`);
+      compSay={id:compSay.id+1,line:`${top}_${bubbleIdx}`,lang:getLang(),text:clean(lines[bubbleIdx])};
       bubble.style.background='rgba(255,255,255,.06)';
       bubble.style.borderColor=r.color;
       bubble.style.color=r.color;

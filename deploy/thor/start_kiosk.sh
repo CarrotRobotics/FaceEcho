@@ -2,6 +2,7 @@
 # 在 Jetson 上启动 FaceEcho：(RealSense 喂流) → 网页服务器 → Firefox 全屏 kiosk（自动授权摄像头、开启 /api/affect）
 #   bash deploy/thor/start_kiosk.sh            # 全屏
 #   KIOSK=0 bash deploy/thor/start_kiosk.sh    # 普通窗口（调试用）
+#   HOST=127.0.0.1 bash deploy/thor/start_kiosk.sh  # 只允许本机访问（默认 0.0.0.0，局域网里的 CoreS3 要能连进来）
 #   DELEGATE=GPU bash deploy/thor/start_kiosk.sh  # 浏览器能用上 NVIDIA 驱动时再试 GPU（snap 版 Firefox 用不上，默认 CPU）
 #
 # 第一次运行会弹摄像头权限框：选 RealSenseRGB，勾「记住此决定」。之后页面会自动选中它。
@@ -31,7 +32,7 @@ fi
 
 # 2) 网页服务器（若 systemd 服务已在跑就不重复起）
 if ! curl -s -o /dev/null "http://localhost:$PORT/"; then
-  HOST=127.0.0.1 PORT=$PORT nohup "$PY" app.py >/tmp/faceecho_server.log 2>&1 &
+  HOST="${HOST:-0.0.0.0}" PORT=$PORT nohup "$PY" app.py >/tmp/faceecho_server.log 2>&1 &
   for i in $(seq 1 30); do curl -s -o /dev/null "http://localhost:$PORT/" && break; sleep 0.5; done
 fi
 
