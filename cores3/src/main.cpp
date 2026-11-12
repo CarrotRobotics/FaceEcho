@@ -225,7 +225,8 @@ void loop() {
     lastPoll = millis();
     poll();
     if (st.ok && st.age > STALE_S) st.ok = false;   // 网页没在推送
-    if (st.ok && st.sayId != playedId) {
+    // 正在播放时不打断：等这句播完，再播 Thor 那边最新的一句
+    if (st.ok && st.sayId != playedId && !M5.Speaker.isPlaying()) {
       bool first = playedId < 0;                    // 刚开机不补播旧台词
       playedId = st.sayId;
       if (!first && !muted) speak();

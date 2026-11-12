@@ -236,6 +236,15 @@ async function init(){
 init();
 
 // ===== 连续情绪 · 安全距离（FaceLNN GRU-D）=====
+let affBase={v:0,a:0}, affCal=[];   // 校准中性脸时记下的 GRU-D 基准（每个人的自然脸不同）
+// ===== 情绪判断统一由 GRU-D（论文模型）给出 =====
+// GRU-D 输出连续 valence/arousal；这里按“相对你中性脸的偏移”到 5 个情绪原型点的距离做 softmax，得到 5 类概率。
+// 原型点的尺度按 GRU-D 在真实人脸上的输出范围设定（valence 范围偏窄，CCC≈0.27）。
+const VA_PROTO={happy:[0.25,0.10],surprise:[0.05,0.40],sad:[-0.22,-0.10],angry:[-0.22,0.30],neutral:[0,0]};
+function vaProbs(o){const v=o.v-affBase.v,a=o.a-affBase.a,T=0.03,p={};let z=0;
+  for(const k in VA_PROTO){const d=(v-VA_PROTO[k][0])**2+(a-VA_PROTO[k][1])**2;p[k]=Math.exp(-d/T);z+=p[k];}
+  for(const k in p)p[k]/=z;return p;}
+const topOf=p=>{let top='neutral',tv=-1;for(const k in p)if(p[k]>tv){tv=p[k];top=k;}return [top,tv];};
 let compSay={id:0,line:'',lang:'ja',text:''};   // 伙伴最近说的一句（推给 CoreS3 等外部设备）
 let affEst=null, driveByVA=false, affLast=null, affPostBusy=false, affPostT=0;
 const affHist=[]; const AFF_WIN=12;          // 轨迹窗口（秒）
@@ -250,6 +259,7 @@ if(new URLSearchParams(location.search).get('robot')==='1')robotChk.checked=true
 })();
 function renderAff(){
   driveBtn.textContent=t('drive',{s:t(driveByVA?'drive_va':'drive_cls')});
+  document.querySelector('.fuse').style.display=(affEst&&driveByVA)?'none':'';
   if(!affEst){affState.className='pill warn';affState.textContent=t('aff_notLoaded');affHint.innerHTML=t('aff_needW');return;}
   const md=affEst.meta||{}, v=md.val_drop35||md.val_drop0;
   affState.className='pill';affState.textContent=t('aff_loaded')+(md.w_danger?` · W_DANGER=${md.w_danger}`:'');
@@ -387,7 +397,7 @@ videoBtn.onclick=()=>{video.classList.toggle('hide');renderButtons();};
 muscleBtn.onclick=()=>{showMuscle=!showMuscle;renderButtons();};
 
 let calState='none',calSamples=[],calEndTime=0,baseline=null;
-calBtn.onclick=()=>{calSamples=[];calState='collecting';calEndTime=performance.now()+3000;};
+calBtn.onclick=()=>{calSamples=[];affCal=[];calState='collecting';calEndTime=performance.now()+3000;};
 
 function loop(){if(!running)return;
   if(video.currentTime!==lastT){lastT=video.currentTime;const res=lm.detectForVideo(video,performance.now());process(res);}
@@ -472,7 +482,8 @@ function process(res){
     moodName.textContent=t('noFace');moodEmoji.textContent='🔍';moodHint.textContent=t('moveCenter');banner.style.display='none';
     // 丢帧：GRU-D 继续外推（旧版这里直接 return，情绪/伙伴都会冻结）
     const o=affectStep(null,tNow);
-    if(o&&driveByVA)updateCompanion(vaToMood(o.v,o.a),0.5);
+    // 短暂丢帧：沿用 GRU-D 外推；超过 2 秒没人：伙伴回到待机，不对“推测出的情绪”做反应
+    if(o&&driveByVA)updateCompanion(o.gap>2?'neutral':topOf(vaProbs(o))[0],0.5);
     return;}
   P=res.faceLandmarks[0]; lastLandmarks=P;
   const pose=estimatePose();buildQ(pose.roll);
@@ -483,24 +494,29 @@ function process(res){
   const aff=affectStep(Object.keys(m).length?m:null,tNow);
 
   if(calState==='collecting'){
-    calSamples.push(f);const remain=Math.max(0,(calEndTime-performance.now())/1000);
+    calSamples.push(f);if(aff)affCal.push(aff);const remain=Math.max(0,(calEndTime-performance.now())/1000);
     banner.style.display='block';banner.textContent=t('calibrating',{s:remain.toFixed(1),n:calSamples.length});
     if(performance.now()>=calEndTime){baseline={};
       for(const k of ['smileLift','mouthOpen','mouthW','browGap','innerBrowGap','eyeOpen'])
         baseline[k]=calSamples.reduce((s,x)=>s+x[k],0)/calSamples.length;
+      if(affCal.length){affBase={v:affCal.reduce((s,x)=>s+x.v,0)/affCal.length,a:affCal.reduce((s,x)=>s+x.a,0)/affCal.length};}
       calState='done';banner.style.display='none';setStatus('st_calibrated');renderButtons();}
   }
 
   const extreme=Math.abs(pose.yaw)>0.6||Math.abs(pose.pitch)>0.8||Math.abs(pose.roll)>0.6;
   const geo=classifyGeo(f), bs=classifyBS(m), dbg=geo.dbg;
 
-  // ===== 融合 =====
-  let fused={};for(const k of keys)fused[k]=wGeo*geo.sc[k]+(1-wGeo)*bs[k];
-  fused=norm(fused);
-  const poseConf=extreme?0.5:1;
-  for(const k in fused)if(k!=='neutral')fused[k]*=poseConf;
-  if(extreme)fused.neutral+=0.3;fused=norm(fused);
-  for(const k in sm)sm[k]=lerp(sm[k],fused[k],0.25);
+  // ===== 情绪来源：GRU-D（论文模型，默认）或旧的“几何 + Blendshape”规则融合 =====
+  const useGRUD=!!(aff&&driveByVA);
+  if(useGRUD){const pr=vaProbs(aff);for(const k in sm)sm[k]=lerp(sm[k],pr[k],0.5);}   // GRU-D 本身是时序平滑的，只轻微平滑
+  else{
+    let fused={};for(const k of keys)fused[k]=wGeo*geo.sc[k]+(1-wGeo)*bs[k];
+    fused=norm(fused);
+    const poseConf=extreme?0.5:1;
+    for(const k in fused)if(k!=='neutral')fused[k]*=poseConf;
+    if(extreme)fused.neutral+=0.3;fused=norm(fused);
+    for(const k in sm)sm[k]=lerp(sm[k],fused[k],0.25);
+  }
 
   let top='neutral',tv=-1;for(const k in sm)if(sm[k]>tv){tv=sm[k];top=k;}
   moodEmoji.textContent=EMO[top].e;moodName.textContent=t('emo_'+top);
@@ -560,8 +576,7 @@ function process(res){
     },top);
   }
   // ===== 情绪反馈伙伴 =====
-  if(aff&&driveByVA)updateCompanion(vaToMood(aff.v,aff.a),Math.min(1,Math.hypot(aff.v,aff.a)));
-  else updateCompanion(top,tv);
+  updateCompanion(top,tv);   // 伙伴和中间面板用同一个判断（GRU-D 时就是 GRU-D）
 }
 function drawFeature(conns,color,w){if(!conns)return;ctx.strokeStyle=color;ctx.lineWidth=w;ctx.lineJoin='round';ctx.lineCap='round';ctx.beginPath();
   for(const c of conns){const a=px(c.start),b=px(c.end);ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);}ctx.stroke();}
@@ -779,7 +794,8 @@ function updateCompanion(top,conf){
   // 情绪需要稳定若干帧、且有一定置信度，才触发新回应（像"看清楚了才回应"）
   if(top===compEmo){emoStableFrames++;}
   else{compEmo=top;emoStableFrames=0;}
-  if(emoStableFrames===6 || (compShown==='' )){
+  // 正在说话时先把这句说完，不打断；说完后再回应最新的情绪（情绪稳定 6 帧以上就会触发）
+  if((emoStableFrames>=6 || compShown==='') && !voice.busy()){
     if(top!==compShown || compShown===''){
       compShown=top; const r=REACT[top];
       const lines=t('lines')[top];

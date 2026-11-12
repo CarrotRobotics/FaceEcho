@@ -12,7 +12,6 @@ export class CompanionVoice {
     this.voices = [];
     this.manifest = null;
     this.audio = new Audio();
-    this.lastT = -1e9;
     this.onchange = null;
     this.hasTTS = 'speechSynthesis' in window;
     if (this.hasTTS) {
@@ -45,17 +44,22 @@ export class CompanionVoice {
     return v ? { kind: 'tts', name: v.name } : { kind: 'none' };
   }
 
+  // 正在说话（音频或系统语音）——伙伴说完这句之前不换台词
+  busy() {
+    if (!this.on) return false;
+    const a = this.audio;
+    if (a.src && !a.paused && !a.ended) return true;
+    return this.hasTTS && speechSynthesis.speaking;
+  }
+
   stop() {
     try { this.audio.pause(); } catch (e) {}
     if (this.hasTTS) speechSynthesis.cancel();
   }
 
-  // key 形如 'happy_2'（对应音频文件名）；2.5 秒内不重复开口，避免一直念
+  // key 形如 'happy_2'（对应音频文件名）。调用方用 busy() 保证不会打断上一句。
   say(text, key) {
     if (!this.on) return;
-    const now = performance.now();
-    if (now - this.lastT < 2500) return;
-    this.lastT = now;
     const lang = getLang();
     this.stop();
     if (key && this.manifest && (this.manifest[lang] || []).includes(key)) {
