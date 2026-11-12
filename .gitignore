@@ -3,3 +3,8 @@ __pycache__/
 .DS_Store
 venv/
 .venv/
+
+# FaceLNN 权重（用有 EULA 的数据训练，默认不进仓库；用 scp 拷到设备）
+static/models/grud_safety.json
+*.pt
+static/models/face_landmarker.task

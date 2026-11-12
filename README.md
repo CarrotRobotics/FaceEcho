@@ -11,6 +11,10 @@ FaceEcho 是一个纯浏览器端运行的表情识别与虚拟形象应用。�
 3. **情绪反馈伙伴** —— 它不镜像你，而是对你的**情绪**做出回应：你开心它替你高兴，
    你难过它来安慰你。
 
+4. **连续情绪 · 安全社交距离（新）** —— 接入 FaceLNN 定稿算法（**GRU-D + 下游安全感知非对称损失**）：
+   从 52 维 blendshape 流估计连续 valence / arousal，并给出机器人应与用户保持的距离（0.3–2.5 m）。
+   **没看到脸 / 掉帧时不冻结**，按 GRU-D 的衰减机制继续外推；可选通过本机 `/api/affect` 推给机器人。
+
 表情判断融合了两条概率来源：**几何法**（基于关键点几何，带中性脸校准、头部姿态矫正、
 动态特征，可解释）与 **Blendshape 深度学习模型**（MediaPipe 训练输出），两者加权融合。
 
@@ -164,6 +168,37 @@ Forwarding  https://xxxx-xx-xx.ngrok-free.dev -> http://localhost:8002
 
 ---
 
+## 场景四：Jetson AGX Thor（机器人本机部署，离线）
+
+见 **[deploy/thor/README_THOR.md](deploy/thor/README_THOR.md)**。简要：
+
+```bash
+# 5090：训练 + 导出 GRU-D 权重（数据在 5090）
+python tools/train_export_grud.py --data_root data/affwild2 --w_danger 4 --out grud_safety.json
+# Thor：
+git clone -b lnn-safe-affect-thor https://github.com/CarrotRobotics/FaceEcho.git && cd FaceEcho
+scp <5090>:~/FaceLNN/grud_safety.json static/models/     # 把权重拷过来
+bash deploy/thor/setup_thor.sh --autostart               # RealSense 再加 --realsense
+bash deploy/thor/start_kiosk.sh                          # 全屏、自动开摄像头
+curl localhost:8002/api/affect                           # 机器人控制端读安全距离
+```
+
+---
+
+## 连续情绪 · 安全距离（FaceLNN）是怎么接进来的
+
+- **算法**：与 FaceLNN 论文定稿一致——GRU-D（64 隐单元）+ 安全感知非对称损失
+  （欠距离/太近方向 × `W_DANGER`，再加 0.3×VA-MSE）；距离映射 `d = clamp(1.6 − 0.95·v + 0.85·max(a,0), 0.3, 2.5)`。
+  真实数据上 CfC/LTC 学不动 VA，所以部署的是 GRU-D，不是 CfC。
+- **训练/导出**：`tools/train_export_grud.py`（在 5090 上跑，自包含，读 FaceLNN 预处理好的 npz）。
+- **浏览器推理**：`static/js/affect_grud.js`，逐帧 GRU-D，与 PyTorch 数值一致
+  （`node tools/parity_test.mjs` 验证，误差 ~1e-7）。没看到脸的帧按 `mask=0`、真实时间间隔 `delta` 送入模型。
+- **页面**：底部新面板（12 秒 VA 轨迹、VA 平面、距离仪表、感知状态）；「情绪反馈伙伴」可切换为由连续 VA 驱动。
+- **没有权重文件时**：面板显示提示，其余功能和以前完全一样。
+- **URL 参数**：`?robot=1` 开启推送 `/api/affect`；`?autostart=1` 自动开摄像头（kiosk 用）。
+
+---
+
 ## 使用步骤（打开页面后）
 
 1. 点「开启摄像头」，允许摄像头权限（RealSense 用户在 Firefox 权限框选 `RealSenseRGB`）。
@@ -182,7 +217,7 @@ Forwarding  https://xxxx-xx-xx.ngrok-free.dev -> http://localhost:8002
 
 ```
 faceecho/
-├── app.py                 # Flask 服务器（仅静态托管）
+├── app.py                 # Flask 服务器（静态托管 + 可选 /api/affect 机器人接口）
 ├── requirements.txt
 ├── run.sh                 # 一键启动（装依赖 + 下模型 + 检测 RealSense + 起服务）
 ├── get_model.sh           # 单独下载识别模型
@@ -190,17 +225,25 @@ faceecho/
 ├── ATTRIBUTION.md         # 第三方资源与许可
 ├── docs/                  # README 用的截图
 └── static/
-    ├── index.html         # 主应用（三视图）
+    ├── index.html         # 主应用（三视图 + 连续情绪/安全距离面板）
+    ├── js/affect_grud.js  # FaceLNN GRU-D 浏览器端推理
+    ├── vendor/            # three.js / three-vrm 本地副本（离线可用，MIT）
     ├── avatar3d.html      # 独立的纯 3D 形象页（可选）
     ├── models/
-    │   └── avatar.vrm     # 示例 3D 形象
+    │   ├── avatar.vrm     # 示例 3D 形象
+    │   └── grud_safety.json  # FaceLNN 权重（自己训练导出，不进仓库）
     └── mediapipe/         # 离线识别运行时（WASM）
+tools/
+├── train_export_grud.py   # 5090 上训练 GRU-D+安全损失并导出 JSON
+└── parity_test.mjs        # JS 与 PyTorch 数值一致性测试
+deploy/thor/               # Jetson AGX Thor：一键安装、kiosk 启动、说明
 ```
 
 ## 技术栈
 
 - 后端：Flask（仅静态托管）
 - 识别：MediaPipe Tasks Vision — FaceLandmarker（浏览器端深度学习推理）
-- 渲染：Canvas 2D（线条脸/卡通脸/伙伴）+ three.js & @pixiv/three-vrm（3D 形象）
+- 渲染：Canvas 2D（线条脸/卡通脸/伙伴）+ three.js & @pixiv/three-vrm（3D 形象，已本地化）
+- 连续情绪：GRU-D + 安全感知非对称损失（FaceLNN），纯 JS 推理
 
 第三方资源与许可见 `ATTRIBUTION.md`。

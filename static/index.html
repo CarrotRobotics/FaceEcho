@@ -6,9 +6,9 @@
 <title>FaceEcho 脸回声 · 表情识别与虚拟形象</title>
 <script type="importmap">
 { "imports": {
-  "three": "https://cdn.jsdelivr.net/npm/three@0.160.1/build/three.module.js",
-  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.1/examples/jsm/",
-  "@pixiv/three-vrm": "https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@3.1.6/lib/three-vrm.module.js"
+  "three": "./vendor/three/build/three.module.js",
+  "three/addons/": "./vendor/three/examples/jsm/",
+  "@pixiv/three-vrm": "./vendor/three-vrm/three-vrm.module.js"
 }}
 </script>
 <style>
@@ -62,6 +62,26 @@
   #avatarWrap{position:relative;width:100%;aspect-ratio:4/3;border-radius:12px;overflow:hidden;background:linear-gradient(160deg,#2a2f52,#12142a)}
   #avatarWrap canvas{width:100%!important;height:100%!important;display:block}
   #avatarHint{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;color:var(--muted);font-size:13px;padding:16px}
+  /* ===== 连续情绪 · 安全距离（FaceLNN GRU-D） ===== */
+  .affect{margin-top:16px}
+  .affect-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:2px 4px 10px}
+  .affect-head h2{margin:0}
+  .affect-grid{display:grid;grid-template-columns:2fr 1fr 1.1fr;gap:14px;align-items:start}
+  @media(max-width:1100px){.affect-grid{grid-template-columns:1fr 1fr}}
+  @media(max-width:720px){.affect-grid{grid-template-columns:1fr}}
+  .affect canvas{width:100%;display:block;border-radius:12px;background:#171a2e}
+  #vaTraj{aspect-ratio:600/190}#vaPlane{aspect-ratio:1/1;max-width:240px;margin:0 auto}
+  .gauge{position:relative;height:18px;border-radius:9px;margin:26px 2px 8px;
+    background:linear-gradient(90deg,#ff5a7a 0%,#ffcf5a 22%,#5ee6a0 45%,#6cf0ff 100%)}
+  .gauge .mk{position:absolute;top:-7px;width:4px;height:32px;margin-left:-2px;background:#fff;border-radius:2px;
+    box-shadow:0 0 8px rgba(255,255,255,.8);transition:left .08s linear}
+  .gauge-scale{display:flex;justify-content:space-between;font-size:11px;color:var(--muted)}
+  .dist-big{font-size:30px;font-weight:800;font-variant-numeric:tabular-nums;margin-top:10px}
+  .va-num{display:flex;gap:16px;font-size:13px;color:var(--muted);margin-top:8px}
+  .va-num b{color:var(--text);font-variant-numeric:tabular-nums}
+  .affect .hint{font-size:12px;color:var(--muted);line-height:1.7;margin-top:8px}
+  .affect code{background:rgba(255,255,255,.08);padding:1px 5px;border-radius:5px}
+  .chk{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:5px;cursor:pointer}
 </style>
 </head>
 <body>
@@ -124,6 +144,34 @@
     </div>
   </div>
 
+  <div class="card affect" id="affectCard">
+    <div class="affect-head">
+      <h2>🧠 连续情绪 · 安全社交距离（FaceLNN：GRU-D + 安全感知损失）</h2>
+      <span class="pill warn" id="affState">模型未加载</span>
+      <button id="driveBtn" class="ghost" disabled style="padding:6px 12px;font-size:12px">🫂 伙伴依据：表情分类</button>
+      <label class="chk"><input type="checkbox" id="robotChk">📡 发送到机器人（本机 /api/affect）</label>
+    </div>
+    <div class="affect-grid">
+      <div>
+        <canvas id="vaTraj" width="600" height="190"></canvas>
+        <div class="legend"><span><i style="border-color:#6cf0ff"></i>valence 愉悦度</span>
+          <span><i style="border-color:#ffb36c"></i>arousal 唤醒度</span>
+          <span><i style="border-color:rgba(255,90,122,.6)"></i>红底 = 没看到脸（GRU-D 外推，不冻结）</span></div>
+      </div>
+      <div><canvas id="vaPlane" width="240" height="240"></canvas>
+        <div class="va-num" style="justify-content:center">V <b id="vNum">–</b> A <b id="aNum">–</b></div></div>
+      <div>
+        <div class="status">建议与用户保持的距离</div>
+        <div class="dist-big" id="distNum">– m</div>
+        <div class="gauge"><div class="mk" id="distMk" style="left:50%"></div></div>
+        <div class="gauge-scale"><span>0.3 m 近</span><span>1.4</span><span>2.5 m 远</span></div>
+        <div class="va-num"><span>感知 <b id="obsNum">–</b></span><span>延迟 <b id="gapNum">–</b></span></div>
+        <div class="hint" id="affHint">需要权重 <code>static/models/grud_safety.json</code>：在 5090 上用
+          <code>tools/train_export_grud.py</code> 训练导出后拷进来。没有它，其余功能照常。</div>
+      </div>
+    </div>
+  </div>
+
   <div class="foot">
     引擎：MediaPipe FaceLandmarker（468 点 + Blendshapes）。融合 = 权重·几何概率 + (1−权重)·模型概率，再归一化。<br>
     卡通脸的五官动作直接由 blendshape 驱动（微笑/张口/挑眉/眨眼等），情绪底色由融合结果决定。全部本地运行。
@@ -133,6 +181,7 @@
 <script type="module">
 import { FaceLandmarker, FilesetResolver }
   from "./mediapipe/vision_bundle.mjs";
+import { SafeAffectEstimator, vaToMood } from "./js/affect_grud.js";
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
@@ -165,13 +214,88 @@ for(const k of keys){const r=document.createElement('div');r.className='bar-row'
 async function init(){
   try{
     const files=await FilesetResolver.forVisionTasks("./mediapipe/wasm");
-    lm=await FaceLandmarker.createFromOptions(files,{
-      baseOptions:{modelAssetPath:"./models/face_landmarker.task",delegate:"GPU"},
+    const mk=delegate=>FaceLandmarker.createFromOptions(files,{
+      baseOptions:{modelAssetPath:"./models/face_landmarker.task",delegate},
       outputFaceBlendshapes:true, outputFacialTransformationMatrixes:true, runningMode:"VIDEO", numFaces:1});
-    statusEl.textContent='模型就绪，点击"开启摄像头"';startBtn.disabled=false;drawCartoon({},'neutral');
+    // 优先 GPU(WebGL)；某些 Jetson/Wayland 浏览器禁用 WebGL 时自动退回 CPU，不至于整页不可用
+    let dlg='GPU';try{lm=await mk('GPU');}catch(err){console.warn('GPU delegate 失败，改用 CPU：',err);dlg='CPU';lm=await mk('CPU');}
+    statusEl.textContent=`模型就绪(${dlg})，点击"开启摄像头"`;startBtn.disabled=false;drawCartoon({},'neutral');
+    if(new URLSearchParams(location.search).get('autostart')==='1')startCamera();   // kiosk/机器人：免点击直接开摄像头
   }catch(e){statusEl.textContent='模型加载失败：'+e.message;}
 }
 init();
+
+// ===== 连续情绪 · 安全距离（FaceLNN GRU-D）=====
+let affEst=null, driveByVA=false, affLast=null, affPostBusy=false, affPostT=0;
+const affHist=[]; const AFF_WIN=12;          // 轨迹窗口（秒）
+const affState=$('affState'), driveBtn=$('driveBtn'), robotChk=$('robotChk'), affHint=$('affHint');
+const vaTraj=$('vaTraj'), tctx=vaTraj.getContext('2d'), vaPlane=$('vaPlane'), pctx=vaPlane.getContext('2d');
+if(new URLSearchParams(location.search).get('robot')==='1')robotChk.checked=true;
+(async()=>{
+  try{
+    affEst=await SafeAffectEstimator.load('./models/grud_safety.json');
+    const md=affEst.meta||{}, v=md.val_drop35||md.val_drop0;
+    affState.className='pill';affState.textContent='GRU-D 已加载'+(md.w_danger?` · W_DANGER=${md.w_danger}`:'');
+    affHint.innerHTML=`算法：${md.algorithm||'GRU-D + 安全损失'}`+(v?`<br>验证集(35%丢帧)：CCC v/a ${v.ccc_v.toFixed(2)}/${v.ccc_a.toFixed(2)}，危险违规 ${(v.danger_viol*100).toFixed(1)}%`:'')+
+      `<br>没看到脸时继续按 GRU-D 动力学外推，距离不会卡在旧值。`;
+    driveBtn.disabled=false;driveByVA=true;driveBtn.textContent='🫂 伙伴依据：连续情绪(GRU-D)';
+  }catch(e){affEst=null;affState.textContent='模型未加载';drawAffect();}
+})();
+driveBtn.onclick=()=>{driveByVA=!driveByVA;driveBtn.textContent='🫂 伙伴依据：'+(driveByVA?'连续情绪(GRU-D)':'表情分类');compShown='';};
+
+function affectStep(m,t){                    // m = {categoryName:score} 或 null(没看到脸)
+  if(!affEst)return null;
+  let x=null;
+  if(m){x=new Float32Array(affEst.D);affEst.names.forEach((n,j)=>{x[j]=m[n]||0;});}
+  const o=affEst.step(x,t);affLast=o;
+  affHist.push({t,v:o.v,a:o.a,obs:o.observed});
+  while(affHist.length&&affHist[0].t<t-AFF_WIN)affHist.shift();
+  drawAffect();postAffect(o);
+  return o;
+}
+function postAffect(o){
+  if(!robotChk.checked||affPostBusy)return;
+  const now=performance.now();if(now-affPostT<100)return;  // ≤10Hz
+  affPostT=now;affPostBusy=true;
+  fetch('./api/affect',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({v:o.v,a:o.a,dist:o.dist,dist_raw:o.distRaw,observed:o.observed,gap_s:o.gap,
+      mood:vaToMood(o.v,o.a),t_client:Date.now()/1000})})
+    .catch(()=>{}).finally(()=>{affPostBusy=false;});
+}
+function drawAffect(){
+  const W=vaTraj.width,H=vaTraj.height;tctx.fillStyle='#171a2e';tctx.fillRect(0,0,W,H);
+  const y=val=>H/2-Math.max(-1,Math.min(1,val))*(H/2-12);
+  tctx.strokeStyle='rgba(255,255,255,.12)';tctx.lineWidth=1;
+  for(const g of[-1,-.5,0,.5,1]){tctx.beginPath();tctx.moveTo(0,y(g));tctx.lineTo(W,y(g));tctx.stroke();}
+  tctx.fillStyle='rgba(137,146,192,.8)';tctx.font='11px sans-serif';tctx.fillText('+1',4,y(1)+4);tctx.fillText('−1',4,y(-1)-2);
+  if(affHist.length>1){
+    const t1=affHist[affHist.length-1].t,xs=tt=>W-(t1-tt)/AFF_WIN*W;
+    tctx.fillStyle='rgba(255,90,122,.16)';                       // 丢帧区
+    for(let i=1;i<affHist.length;i++)if(!affHist[i].obs)tctx.fillRect(xs(affHist[i-1].t),0,xs(affHist[i].t)-xs(affHist[i-1].t)+1,H);
+    for(const[k,c]of[['v','#6cf0ff'],['a','#ffb36c']]){
+      tctx.strokeStyle=c;tctx.lineWidth=2.2;tctx.beginPath();
+      affHist.forEach((p,i)=>tctx[i?'lineTo':'moveTo'](xs(p.t),y(p[k])));tctx.stroke();}
+  }else{tctx.fillStyle='rgba(137,146,192,.9)';tctx.font='13px sans-serif';
+    tctx.fillText(affEst?'开启摄像头后显示最近 12 秒的情绪轨迹':'未加载 GRU-D 权重',W/2-110,H/2-8);}
+  // VA 平面
+  const S=vaPlane.width,c=S/2,r=S/2-14;pctx.fillStyle='#171a2e';pctx.fillRect(0,0,S,S);
+  pctx.strokeStyle='rgba(255,255,255,.15)';pctx.beginPath();pctx.arc(c,c,r,0,7);pctx.moveTo(c-r,c);pctx.lineTo(c+r,c);pctx.moveTo(c,c-r);pctx.lineTo(c,c+r);pctx.stroke();
+  pctx.fillStyle='rgba(137,146,192,.85)';pctx.font='11px sans-serif';
+  pctx.fillText('兴奋/开心',c+r*.3,c-r*.75);pctx.fillText('紧张/生气',c-r*.95,c-r*.75);
+  pctx.fillText('低落/难过',c-r*.95,c+r*.85);pctx.fillText('放松/满足',c+r*.3,c+r*.85);
+  pctx.fillText('V→',S-24,c-4);pctx.fillText('A↑',c+4,12);
+  const pt=p=>[c+Math.max(-1,Math.min(1,p.v))*r,c-Math.max(-1,Math.min(1,p.a))*r];
+  const tail=affHist.slice(-90);
+  tail.forEach((p,i)=>{const[x,yy]=pt(p);pctx.fillStyle=`rgba(108,240,255,${0.05+0.5*i/tail.length})`;pctx.beginPath();pctx.arc(x,yy,2.2,0,7);pctx.fill();});
+  if(affLast){const[x,yy]=pt(affLast);pctx.fillStyle=affLast.observed?'#fff':'#ff8fa3';pctx.beginPath();pctx.arc(x,yy,6,0,7);pctx.fill();
+    $('vNum').textContent=affLast.v.toFixed(2);$('aNum').textContent=affLast.a.toFixed(2);
+    $('distNum').textContent=affLast.dist.toFixed(2)+' m';
+    const P=affEst.dist;$('distMk').style.left=((affLast.dist-P.d_min)/(P.d_max-P.d_min)*100).toFixed(1)+'%';
+    $('obsNum').textContent=affLast.observed?'看到脸':'丢帧·外推';
+    $('obsNum').style.color=affLast.observed?'var(--ok)':'var(--warn)';
+    $('gapNum').textContent=affLast.observed?(affLast.delta*1000).toFixed(0)+' ms':affLast.gap.toFixed(1)+' s 未见脸';}
+}
+drawAffect();
 
 async function populateCams(){
   try{
@@ -241,7 +365,7 @@ camSel.onchange=async()=>{
   cv.width=video.videoWidth||640;cv.height=video.videoHeight||480;running=true;loop();
   const t=stream.getVideoTracks()[0];statusEl.textContent='✅ 已切换：'+(t?t.label:'')+' 。看到彩色画面即选对了';
 };
-stopBtn.onclick=()=>{running=false;startBtn.disabled=false;stopBtn.disabled=true;calBtn.disabled=true;
+stopBtn.onclick=()=>{running=false;if(affEst){affEst.reset();affHist.length=0;affLast=null;drawAffect();}startBtn.disabled=false;stopBtn.disabled=true;calBtn.disabled=true;
   if(stream)stream.getTracks().forEach(t=>t.stop());ctx.clearRect(0,0,cv.width,cv.height);statusEl.textContent='已停止';};
 videoBtn.onclick=()=>{video.classList.toggle('hide');videoBtn.textContent=video.classList.contains('hide')?'👁 底图：隐藏':'👁 底图：淡显';};
 muscleBtn.onclick=()=>{showMuscle=!showMuscle;muscleBtn.textContent='💪 肌肉线：'+(showMuscle?'显示':'隐藏');};
@@ -327,14 +451,20 @@ function norm(sc){let sum=0;for(const k in sc){sc[k]=Math.max(0,sc[k]);sum+=sc[k
 let sm={happy:0,surprise:0,sad:0,angry:0,neutral:1},prevMetric='',prevTags='';
 function process(res){
   ctx.clearRect(0,0,W(),H());
+  const tNow=performance.now()/1000;
   if(!res.faceLandmarks||!res.faceLandmarks.length){
-    moodName.textContent='没检测到人脸';moodEmoji.textContent='🔍';moodHint.textContent='把脸移到画面中央';banner.style.display='none';return;}
+    moodName.textContent='没检测到人脸';moodEmoji.textContent='🔍';moodHint.textContent='把脸移到画面中央';banner.style.display='none';
+    // 丢帧：GRU-D 继续外推（旧版这里直接 return，情绪/伙伴都会冻结）
+    const o=affectStep(null,tNow);
+    if(o&&driveByVA)updateCompanion(vaToMood(o.v,o.a),0.5);
+    return;}
   P=res.faceLandmarks[0]; lastLandmarks=P;
   const pose=estimatePose();buildQ(pose.roll);
   const f=computeFeatures(pose);pushHist(f);
 
   // blendshape map
   const m={};if(res.faceBlendshapes&&res.faceBlendshapes[0])for(const c of res.faceBlendshapes[0].categories)m[c.categoryName]=c.score;
+  const aff=affectStep(Object.keys(m).length?m:null,tNow);
 
   if(calState==='collecting'){
     calSamples.push(f);const remain=Math.max(0,(calEndTime-performance.now())/1000);
@@ -414,7 +544,8 @@ function process(res){
     },top);
   }
   // ===== 情绪反馈伙伴 =====
-  updateCompanion(top,tv);
+  if(aff&&driveByVA)updateCompanion(vaToMood(aff.v,aff.a),Math.min(1,Math.hypot(aff.v,aff.a)));
+  else updateCompanion(top,tv);
 }
 function drawFeature(conns,color,w){if(!conns)return;ctx.strokeStyle=color;ctx.lineWidth=w;ctx.lineJoin='round';ctx.lineCap='round';ctx.beginPath();
   for(const c of conns){const a=px(c.start),b=px(c.end);ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);}ctx.stroke();}
