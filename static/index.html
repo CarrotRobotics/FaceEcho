@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>FaceEcho 脸回声 · 表情识别与虚拟形象</title>
+<title>FaceEcho</title>
 <script type="importmap">
 { "imports": {
   "three": "./vendor/three/build/three.module.js",
@@ -16,7 +16,10 @@
   *{box-sizing:border-box}
   html,body{margin:0;height:100%;font-family:-apple-system,"PingFang SC","Microsoft YaHei",system-ui,sans-serif;
     background:radial-gradient(1200px 800px at 30% -10%,var(--bg2),var(--bg1));color:var(--text)}
-  .wrap{max-width:1220px;margin:0 auto;padding:22px 16px 60px}
+  .wrap{max-width:1220px;margin:0 auto;padding:22px 16px 60px;position:relative}
+  .langsw{position:absolute;top:20px;right:16px;display:flex;border:1px solid rgba(255,255,255,.18);border-radius:10px;overflow:hidden;z-index:5}
+  .langsw button{background:transparent;box-shadow:none;border-radius:0;padding:6px 14px;font-size:13px;color:var(--muted)}
+  .langsw button.on{background:linear-gradient(135deg,#3a7bff,#6a4bff);color:#fff}
   h1{font-size:21px;margin:4px 0 2px}
   .sub{color:var(--muted);font-size:13px;margin-bottom:14px;line-height:1.6}
   .controls{display:flex;gap:9px;align-items:center;margin-bottom:14px;flex-wrap:wrap}
@@ -41,7 +44,7 @@
   .mood{display:flex;align-items:center;gap:12px;margin:10px 2px 2px}
   .mood-emoji{font-size:32px}.mood-name{font-size:20px;font-weight:700}
   .bars{margin-top:10px;display:grid;gap:7px}
-  .bar-row{display:grid;grid-template-columns:66px 1fr 40px;align-items:center;gap:8px;font-size:12px}
+  .bar-row{display:grid;grid-template-columns:96px 1fr 40px;align-items:center;gap:8px;font-size:12px}
   .bar-track{height:9px;background:rgba(255,255,255,.08);border-radius:6px;overflow:hidden;position:relative}
   .bar-fill{height:100%;width:0;border-radius:6px;background:linear-gradient(90deg,#6cf0ff,#6a4bff);transition:width .1s}
   .mini-src{display:flex;gap:8px;font-size:10px;color:var(--muted);margin-top:2px}
@@ -86,50 +89,51 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>🎭 FaceEcho · 脸回声 —— 表情识别 + 虚拟形象</h1>
-  <div class="sub">同时跑两条概率来源：<b style="color:var(--line)">几何法</b>（基于线条走向，可解释、已校准+姿态矫正）与 <b style="color:#c9b6ff">Blendshape 模型</b>（Google 训练输出）。两者加权<b>融合</b>成最终情绪，并驱动一张<b>卡通脸</b>实时反馈。融合权重可调。</div>
+  <div class="langsw" id="langsw"><button data-lang="ja">日</button><button data-lang="zh">中</button><button data-lang="en">EN</button></div>
+  <h1 data-i18n="h1"></h1>
+  <div class="sub" data-i18n-html="sub"></div>
 
   <div class="controls">
-    <button id="startBtn" disabled>▶ 开启摄像头</button>
-    <select id="camSel" style="padding:9px 10px;border-radius:10px;background:#12152b;color:#eaf2ff;border:1px solid rgba(255,255,255,.15);font-size:13px;max-width:260px"><option value="">（自动选择彩色摄像头）</option></select>
-    <button id="calBtn" class="cal" disabled>🎯 校准中性脸(3秒)</button>
-    <button id="btn3d" class="ghost">🧑 3D人物：关</button>
-    <label class="btn" style="background:linear-gradient(135deg,#ff8f43,#ff5aa0);color:#fff;padding:10px 16px;border-radius:11px;font-size:14px;font-weight:600;cursor:pointer">📦 加载.vrm形象<input id="vrmFile" type="file" accept=".vrm" style="display:none"></label>
-    <button id="bodyBtn" class="ghost">🧍 身体：显示</button>
-    <button id="stopBtn" disabled>■ 停止</button>
-    <button id="videoBtn" class="ghost">👁 底图：淡显</button>
-    <button id="muscleBtn" class="ghost">💪 肌肉线：显示</button>
-    <span class="status" id="status">正在加载识别模型…</span>
+    <button id="startBtn" disabled data-i18n="startBtn"></button>
+    <select id="camSel" style="padding:9px 10px;border-radius:10px;background:#12152b;color:#eaf2ff;border:1px solid rgba(255,255,255,.15);font-size:13px;max-width:260px"><option value="" data-i18n="camAuto"></option></select>
+    <button id="calBtn" class="cal" disabled></button>
+    <button id="btn3d" class="ghost"></button>
+    <label class="btn" style="background:linear-gradient(135deg,#ff8f43,#ff5aa0);color:#fff;padding:10px 16px;border-radius:11px;font-size:14px;font-weight:600;cursor:pointer"><span data-i18n="vrmLoad"></span><input id="vrmFile" type="file" accept=".vrm" style="display:none"></label>
+    <button id="bodyBtn" class="ghost"></button>
+    <button id="stopBtn" disabled data-i18n="stopBtn"></button>
+    <button id="videoBtn" class="ghost"></button>
+    <button id="muscleBtn" class="ghost"></button>
+    <span class="status" id="status"></span>
   </div>
 
   <div class="grid">
     <div class="card">
-      <h2>抽象线条脸（跟随你的面部）</h2>
+      <h2 data-i18n="h_abstract"></h2>
       <div class="stage">
         <video id="video" autoplay playsinline muted></video>
         <canvas id="abstract" width="640" height="480"></canvas>
         <div id="banner"></div>
       </div>
       <div class="legend">
-        <span><i style="border-color:#6cf0ff"></i>五官轮廓</span>
-        <span><i style="border-color:#ff5a7a"></i>肌肉走向/激活</span>
-        <span><i style="border-color:#ffd76c"></i>朝向轴</span>
+        <span><i style="border-color:#6cf0ff"></i><span data-i18n="lg_features"></span></span>
+        <span><i style="border-color:#ff5a7a"></i><span data-i18n="lg_muscle"></span></span>
+        <span><i style="border-color:#ffd76c"></i><span data-i18n="lg_axis"></span></span>
       </div>
       <div class="tags" id="actionTags"></div>
     </div>
 
     <div class="card">
-      <h2 id="midTitle">我的Q版脸（镜像你的动作）</h2>
+      <h2 id="midTitle"></h2>
       <canvas id="cartoon" width="480" height="360" style="width:100%;aspect-ratio:4/3;border-radius:12px;display:block;background:#171a2e"></canvas>
-      <div id="avatarWrap" style="display:none"><div id="avatarHint">正在加载 3D 形象…<br>也可点「📦 加载.vrm形象」换一个</div></div>
+      <div id="avatarWrap" style="display:none"><div id="avatarHint" data-i18n-html="avatarLoading"></div></div>
       <div class="mood">
         <div class="mood-emoji" id="moodEmoji">🙂</div>
-        <div><div class="mood-name" id="moodName">等待中</div>
-        <div class="status" id="moodHint">开启摄像头后开始</div></div>
+        <div><div class="mood-name" id="moodName" data-i18n="waiting"></div>
+        <div class="status" id="moodHint" data-i18n="afterCam"></div></div>
       </div>
       <div class="bars" id="bars"></div>
       <div class="fuse">
-        <div class="row"><span>融合权重</span><span id="wlabel">几何 50% / 模型 50%</span></div>
+        <div class="row"><span data-i18n="fuseW"></span><span id="wlabel"></span></div>
         <input id="wslider" type="range" min="0" max="100" value="50">
       </div>
       <div class="metrics" id="metrics"></div>
@@ -137,51 +141,56 @@
     </div>
 
     <div class="card">
-      <h2>情绪反馈伙伴（对你的表情做出回应）</h2>
+      <h2 data-i18n="h_comp"></h2>
       <canvas id="companion" width="480" height="360"></canvas>
-      <div id="bubble" style="margin:10px 4px 2px;padding:10px 14px;background:rgba(108,240,255,.1);border:1px solid rgba(108,240,255,.3);border-radius:12px;font-size:15px;font-weight:600;min-height:22px;transition:.2s">我在这儿，做个表情看看～</div>
-      <div class="status" style="margin:8px 4px 0" id="compHint">它不是镜像你，而是根据你的情绪给出回应</div>
+      <div id="bubble" style="margin:10px 4px 2px;padding:10px 14px;background:rgba(108,240,255,.1);border:1px solid rgba(108,240,255,.3);border-radius:12px;font-size:15px;font-weight:600;min-height:22px;transition:.2s"></div>
+      <div class="status" style="margin:8px 4px 0" id="compHint" data-i18n="compHint"></div>
+      <div style="display:flex;align-items:center;gap:8px;margin:8px 4px 0;flex-wrap:wrap">
+        <button id="voiceBtn" class="ghost" style="padding:6px 12px;font-size:12px"></button>
+        <span class="status" id="voiceInfo" style="font-size:12px"></span></div>
     </div>
   </div>
 
   <div class="card affect" id="affectCard">
     <div class="affect-head">
-      <h2>🧠 连续情绪 · 安全社交距离（FaceLNN：GRU-D + 安全感知损失）</h2>
-      <span class="pill warn" id="affState">模型未加载</span>
-      <button id="driveBtn" class="ghost" disabled style="padding:6px 12px;font-size:12px">🫂 伙伴依据：表情分类</button>
-      <label class="chk"><input type="checkbox" id="robotChk">📡 发送到机器人（本机 /api/affect）</label>
+      <h2 data-i18n="aff_title"></h2>
+      <span class="pill warn" id="affState" data-i18n="aff_notLoaded"></span>
+      <button id="driveBtn" class="ghost" disabled style="padding:6px 12px;font-size:12px"></button>
+      <label class="chk"><input type="checkbox" id="robotChk"><span data-i18n="robot"></span></label>
     </div>
     <div class="affect-grid">
       <div>
         <canvas id="vaTraj" width="600" height="190"></canvas>
-        <div class="legend"><span><i style="border-color:#6cf0ff"></i>valence 愉悦度</span>
-          <span><i style="border-color:#ffb36c"></i>arousal 唤醒度</span>
-          <span><i style="border-color:rgba(255,90,122,.6)"></i>红底 = 没看到脸（GRU-D 外推，不冻结）</span></div>
+        <div class="legend"><span><i style="border-color:#6cf0ff"></i><span data-i18n="lg_valence"></span></span>
+          <span><i style="border-color:#ffb36c"></i><span data-i18n="lg_arousal"></span></span>
+          <span><i style="border-color:rgba(255,90,122,.6)"></i><span data-i18n="lg_drop"></span></span></div>
       </div>
       <div><canvas id="vaPlane" width="240" height="240"></canvas>
         <div class="va-num" style="justify-content:center">V <b id="vNum">–</b> A <b id="aNum">–</b></div></div>
       <div>
-        <div class="status">建议与用户保持的距离</div>
+        <div class="status" data-i18n="distLabel"></div>
         <div class="dist-big" id="distNum">– m</div>
         <div class="gauge"><div class="mk" id="distMk" style="left:50%"></div></div>
-        <div class="gauge-scale"><span>0.3 m 近</span><span>1.4</span><span>2.5 m 远</span></div>
-        <div class="va-num"><span>感知 <b id="obsNum">–</b></span><span>延迟 <b id="gapNum">–</b></span></div>
-        <div class="hint" id="affHint">需要权重 <code>static/models/grud_safety.json</code>：在 5090 上用
-          <code>tools/train_export_grud.py</code> 训练导出后拷进来。没有它，其余功能照常。</div>
+        <div class="gauge-scale"><span data-i18n="near"></span><span>1.4</span><span data-i18n="far"></span></div>
+        <div class="va-num"><span><span data-i18n="percep"></span> <b id="obsNum">–</b></span><span><span data-i18n="latency"></span> <b id="gapNum">–</b></span></div>
+        <div class="hint" id="affHint" data-i18n-html="aff_needW"></div>
       </div>
     </div>
   </div>
 
-  <div class="foot">
-    引擎：MediaPipe FaceLandmarker（468 点 + Blendshapes）。融合 = 权重·几何概率 + (1−权重)·模型概率，再归一化。<br>
-    卡通脸的五官动作直接由 blendshape 驱动（微笑/张口/挑眉/眨眼等），情绪底色由融合结果决定。全部本地运行。
-  </div>
+  <div class="foot" data-i18n-html="foot"></div>
 </div>
 
 <script type="module">
 import { FaceLandmarker, FilesetResolver }
   from "./mediapipe/vision_bundle.mjs";
 import { SafeAffectEstimator, vaToMood } from "./js/affect_grud.js";
+import { initI18n, t, setLang, onLang, getLang, applyStatic } from "./js/i18n.js";
+import { CompanionVoice } from "./js/voice.js";
+await initI18n(); applyStatic();
+const voice=new CompanionVoice();
+let lastStatus=['st_loading',{}];
+function setStatus(k,p={}){lastStatus=[k,p];document.getElementById('status').textContent=t(k,p);}
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
@@ -202,14 +211,15 @@ const barsEl=$('bars'), metricsEl=$('metrics'), poseEl=$('pose'), tagsEl=$('acti
 const wslider=$('wslider'), wlabel=$('wlabel'), camSel=$('camSel');
 
 let lm=null, running=false, stream=null, lastT=-1, showMuscle=true, wGeo=0.5;
-wslider.oninput=()=>{wGeo=wslider.value/100;wlabel.textContent=`几何 ${wslider.value}% / 模型 ${100-wslider.value}%`;};
+const renderW=()=>{wlabel.textContent=t('wlabel',{g:wslider.value,m:100-wslider.value});};
+wslider.oninput=()=>{wGeo=wslider.value/100;renderW();};
 
-const EMO={happy:{n:'开心',e:'😄'},surprise:{n:'惊讶',e:'😮'},sad:{n:'伤心',e:'😢'},angry:{n:'生气',e:'😠'},neutral:{n:'平静',e:'🙂'}};
+const EMO={happy:{e:'😄'},surprise:{e:'😮'},sad:{e:'😢'},angry:{e:'😠'},neutral:{e:'🙂'}};
 const keys=['happy','surprise','sad','angry','neutral'];
 const barF={};
 for(const k of keys){const r=document.createElement('div');r.className='bar-row';
-  r.innerHTML=`<span>${EMO[k].e} ${EMO[k].n}</span><div class="bar-track"><div class="bar-fill"></div></div><span class="v">0%</span>`;
-  barsEl.appendChild(r);barF[k]={f:r.querySelector('.bar-fill'),v:r.querySelector('.v')};}
+  r.innerHTML=`<span class="bl">${EMO[k].e} ${t('emo_'+k)}</span><div class="bar-track"><div class="bar-fill"></div></div><span class="v">0%</span>`;
+  barsEl.appendChild(r);barF[k]={f:r.querySelector('.bar-fill'),v:r.querySelector('.v'),l:r.querySelector('.bl')};}
 
 async function init(){
   try{
@@ -219,9 +229,9 @@ async function init(){
       outputFaceBlendshapes:true, outputFacialTransformationMatrixes:true, runningMode:"VIDEO", numFaces:1});
     // 优先 GPU(WebGL)；某些 Jetson/Wayland 浏览器禁用 WebGL 时自动退回 CPU，不至于整页不可用
     let dlg=(new URLSearchParams(location.search).get('delegate')||'GPU').toUpperCase();try{lm=await mk(dlg);}catch(err){console.warn(dlg+' delegate 失败，改用 CPU：',err);dlg='CPU';lm=await mk('CPU');}
-    statusEl.textContent=`模型就绪(${dlg})，点击"开启摄像头"`;startBtn.disabled=false;drawCartoon({},'neutral');
+    setStatus('st_ready',{d:dlg});startBtn.disabled=false;drawCartoon({},'neutral');
     if(new URLSearchParams(location.search).get('autostart')==='1')startCamera();   // kiosk/机器人：免点击直接开摄像头
-  }catch(e){statusEl.textContent='模型加载失败：'+e.message;}
+  }catch(e){setStatus('st_loadFail',{e:e.message});}
 }
 init();
 
@@ -234,14 +244,18 @@ if(new URLSearchParams(location.search).get('robot')==='1')robotChk.checked=true
 (async()=>{
   try{
     affEst=await SafeAffectEstimator.load('./models/grud_safety.json');
-    const md=affEst.meta||{}, v=md.val_drop35||md.val_drop0;
-    affState.className='pill';affState.textContent='GRU-D 已加载'+(md.w_danger?` · W_DANGER=${md.w_danger}`:'');
-    affHint.innerHTML=`算法：${md.algorithm||'GRU-D + 安全损失'}`+(v?`<br>验证集(35%丢帧)：CCC v/a ${v.ccc_v.toFixed(2)}/${v.ccc_a.toFixed(2)}，危险违规 ${(v.danger_viol*100).toFixed(1)}%`:'')+
-      `<br>没看到脸时继续按 GRU-D 动力学外推，距离不会卡在旧值。`;
-    driveBtn.disabled=false;driveByVA=true;driveBtn.textContent='🫂 伙伴依据：连续情绪(GRU-D)';drawAffect();
-  }catch(e){affEst=null;affState.textContent='模型未加载';drawAffect();}
+    driveBtn.disabled=false;driveByVA=true;renderAff();drawAffect();
+  }catch(e){affEst=null;renderAff();drawAffect();}
 })();
-driveBtn.onclick=()=>{driveByVA=!driveByVA;driveBtn.textContent='🫂 伙伴依据：'+(driveByVA?'连续情绪(GRU-D)':'表情分类');compShown='';};
+function renderAff(){
+  driveBtn.textContent=t('drive',{s:t(driveByVA?'drive_va':'drive_cls')});
+  if(!affEst){affState.className='pill warn';affState.textContent=t('aff_notLoaded');affHint.innerHTML=t('aff_needW');return;}
+  const md=affEst.meta||{}, v=md.val_drop35||md.val_drop0;
+  affState.className='pill';affState.textContent=t('aff_loaded')+(md.w_danger?` · W_DANGER=${md.w_danger}`:'');
+  affHint.innerHTML=t('aff_info',{a:md.algorithm||'GRU-D + safety loss'})+
+    (v?'<br>'+t('aff_val',{v:v.ccc_v.toFixed(2),ar:v.ccc_a.toFixed(2),d:(v.danger_viol*100).toFixed(1)}):'')+'<br>'+t('aff_extrap');
+}
+driveBtn.onclick=()=>{driveByVA=!driveByVA;renderAff();compShown='';};
 
 function affectStep(m,t){                    // m = {categoryName:score} 或 null(没看到脸)
   if(!affEst)return null;
@@ -276,13 +290,13 @@ function drawAffect(){
       tctx.strokeStyle=c;tctx.lineWidth=2.2;tctx.beginPath();
       affHist.forEach((p,i)=>tctx[i?'lineTo':'moveTo'](xs(p.t),y(p[k])));tctx.stroke();}
   }else{tctx.fillStyle='rgba(137,146,192,.9)';tctx.font='13px sans-serif';
-    tctx.fillText(affEst?'开启摄像头后显示最近 12 秒的情绪轨迹':'未加载 GRU-D 权重',W/2-110,H/2-8);}
+    tctx.textAlign='center';tctx.fillText(t(affEst?'traj_wait':'traj_noW'),W/2,H/2-8);tctx.textAlign='left';}
   // VA 平面
   const S=vaPlane.width,c=S/2,r=S/2-14;pctx.fillStyle='#171a2e';pctx.fillRect(0,0,S,S);
   pctx.strokeStyle='rgba(255,255,255,.15)';pctx.beginPath();pctx.arc(c,c,r,0,7);pctx.moveTo(c-r,c);pctx.lineTo(c+r,c);pctx.moveTo(c,c-r);pctx.lineTo(c,c+r);pctx.stroke();
   pctx.fillStyle='rgba(137,146,192,.85)';pctx.font='11px sans-serif';
-  pctx.fillText('兴奋/开心',c+r*.3,c-r*.75);pctx.fillText('紧张/生气',c-r*.95,c-r*.75);
-  pctx.fillText('低落/难过',c-r*.95,c+r*.85);pctx.fillText('放松/满足',c+r*.3,c+r*.85);
+  pctx.fillText(t('q_excited'),c+r*.3,c-r*.75);pctx.fillText(t('q_tense'),c-r*.95,c-r*.75);
+  pctx.fillText(t('q_down'),c-r*.95,c+r*.85);pctx.fillText(t('q_relax'),c+r*.3,c+r*.85);
   pctx.fillText('V→',S-24,c-4);pctx.fillText('A↑',c+4,12);
   const pt=p=>[c+Math.max(-1,Math.min(1,p.v))*r,c-Math.max(-1,Math.min(1,p.a))*r];
   const tail=affHist.slice(-90);
@@ -291,9 +305,9 @@ function drawAffect(){
     $('vNum').textContent=affLast.v.toFixed(2);$('aNum').textContent=affLast.a.toFixed(2);
     $('distNum').textContent=affLast.dist.toFixed(2)+' m';
     const P=affEst.dist;$('distMk').style.left=((affLast.dist-P.d_min)/(P.d_max-P.d_min)*100).toFixed(1)+'%';
-    $('obsNum').textContent=affLast.observed?'看到脸':'丢帧·外推';
+    $('obsNum').textContent=t(affLast.observed?'seeFace':'dropExtrap');
     $('obsNum').style.color=affLast.observed?'var(--ok)':'var(--warn)';
-    $('gapNum').textContent=affLast.observed?(affLast.delta*1000).toFixed(0)+' ms':affLast.gap.toFixed(1)+' s 未见脸';}
+    $('gapNum').textContent=affLast.observed?(affLast.delta*1000).toFixed(0)+' ms':t('noFaceFor',{s:affLast.gap.toFixed(1)});}
 }
 drawAffect();
 
@@ -301,9 +315,9 @@ async function populateCams(){
   try{
     const devs=await navigator.mediaDevices.enumerateDevices();
     const cams=devs.filter(d=>d.kind==='videoinput');
-    camSel.innerHTML='<option value="">（自动选择彩色摄像头）</option>';
+    camSel.innerHTML=`<option value="" data-i18n="camAuto">${t('camAuto')}</option>`;
     cams.forEach((c,i)=>{const o=document.createElement('option');o.value=c.deviceId;
-      o.textContent=c.label||('摄像头 '+(i+1));camSel.appendChild(o);});
+      o.textContent=c.label||t('camN',{n:i+1});camSel.appendChild(o);});
   }catch(e){}
 }
 async function openCam(deviceId){
@@ -313,7 +327,7 @@ async function openCam(deviceId){
   return await navigator.mediaDevices.getUserMedia(constraints);
 }
 async function startCamera(){
-  statusEl.textContent='正在打开摄像头…';
+  setStatus('st_opening');
   // 若用户指定了设备，直接用；否则枚举所有摄像头逐个尝试，跳过打不开的深度/红外节点
   try{
     if(camSel.value){ stream=await openCam(camSel.value); }
@@ -337,10 +351,10 @@ async function startCamera(){
         try{ stream=await navigator.mediaDevices.getUserMedia({video:true,audio:false}); ok=true; }
         catch(err){ lastErr=err; }
       }
-      if(!ok) throw lastErr||new Error('没有可用的彩色摄像头');
+      if(!ok) throw lastErr||new Error(t('st_noColorCam'));
     }
   }catch(e){
-    statusEl.textContent='无法访问摄像头：'+e.message+'（若是 RealSense，请在下拉里手动选带 RGB/Color 或能出彩色画面的那一项）';
+    setStatus('st_camFail',{e:e.message});
     await populateCams();return;
   }
   video.srcObject=stream;await video.play();
@@ -350,7 +364,7 @@ async function startCamera(){
   // 把当前实际使用的设备在下拉里选中
   const track=stream.getVideoTracks()[0];
   if(track){const id=track.getSettings().deviceId; if(id)camSel.value=id;
-    statusEl.textContent='✅ 已打开：'+(track.label||'摄像头')+'。请保持自然表情，点击"校准中性脸"';}
+    setStatus('st_opened',{l:track.label||t('cam')});}
   loop();
 }
 startBtn.onclick=startCamera;
@@ -360,15 +374,15 @@ camSel.onchange=async()=>{
   if(stream)stream.getTracks().forEach(t=>t.stop());
   running=false;
   try{ stream=await openCam(camSel.value||undefined); }
-  catch(e){ statusEl.textContent='该摄像头打不开（可能是深度/红外流）：'+e.message;return; }
+  catch(e){ setStatus('st_camBad',{e:e.message});return; }
   video.srcObject=stream;await video.play();
   cv.width=video.videoWidth||640;cv.height=video.videoHeight||480;running=true;loop();
-  const t=stream.getVideoTracks()[0];statusEl.textContent='✅ 已切换：'+(t?t.label:'')+' 。看到彩色画面即选对了';
+  const trk=stream.getVideoTracks()[0];setStatus('st_switched',{l:trk?trk.label:''});
 };
 stopBtn.onclick=()=>{running=false;if(affEst){affEst.reset();affHist.length=0;affLast=null;drawAffect();}startBtn.disabled=false;stopBtn.disabled=true;calBtn.disabled=true;
-  if(stream)stream.getTracks().forEach(t=>t.stop());ctx.clearRect(0,0,cv.width,cv.height);statusEl.textContent='已停止';};
-videoBtn.onclick=()=>{video.classList.toggle('hide');videoBtn.textContent=video.classList.contains('hide')?'👁 底图：隐藏':'👁 底图：淡显';};
-muscleBtn.onclick=()=>{showMuscle=!showMuscle;muscleBtn.textContent='💪 肌肉线：'+(showMuscle?'显示':'隐藏');};
+  if(stream)stream.getTracks().forEach(t=>t.stop());ctx.clearRect(0,0,cv.width,cv.height);voice.stop();setStatus('st_stopped');};
+videoBtn.onclick=()=>{video.classList.toggle('hide');renderButtons();};
+muscleBtn.onclick=()=>{showMuscle=!showMuscle;renderButtons();};
 
 let calState='none',calSamples=[],calEndTime=0,baseline=null;
 calBtn.onclick=()=>{calSamples=[];calState='collecting';calEndTime=performance.now()+3000;};
@@ -453,7 +467,7 @@ function process(res){
   ctx.clearRect(0,0,W(),H());
   const tNow=performance.now()/1000;
   if(!res.faceLandmarks||!res.faceLandmarks.length){
-    moodName.textContent='没检测到人脸';moodEmoji.textContent='🔍';moodHint.textContent='把脸移到画面中央';banner.style.display='none';
+    moodName.textContent=t('noFace');moodEmoji.textContent='🔍';moodHint.textContent=t('moveCenter');banner.style.display='none';
     // 丢帧：GRU-D 继续外推（旧版这里直接 return，情绪/伙伴都会冻结）
     const o=affectStep(null,tNow);
     if(o&&driveByVA)updateCompanion(vaToMood(o.v,o.a),0.5);
@@ -468,11 +482,11 @@ function process(res){
 
   if(calState==='collecting'){
     calSamples.push(f);const remain=Math.max(0,(calEndTime-performance.now())/1000);
-    banner.style.display='block';banner.textContent=`🎯 校准中… 保持自然 ${remain.toFixed(1)}s（${calSamples.length} 帧）`;
+    banner.style.display='block';banner.textContent=t('calibrating',{s:remain.toFixed(1),n:calSamples.length});
     if(performance.now()>=calEndTime){baseline={};
       for(const k of ['smileLift','mouthOpen','mouthW','browGap','innerBrowGap','eyeOpen'])
         baseline[k]=calSamples.reduce((s,x)=>s+x[k],0)/calSamples.length;
-      calState='done';banner.style.display='none';statusEl.textContent='✅ 已校准';calBtn.textContent='🎯 重新校准';}
+      calState='done';banner.style.display='none';setStatus('st_calibrated');renderButtons();}
   }
 
   const extreme=Math.abs(pose.yaw)>0.6||Math.abs(pose.pitch)>0.8||Math.abs(pose.roll)>0.6;
@@ -487,30 +501,30 @@ function process(res){
   for(const k in sm)sm[k]=lerp(sm[k],fused[k],0.25);
 
   let top='neutral',tv=-1;for(const k in sm)if(sm[k]>tv){tv=sm[k];top=k;}
-  moodEmoji.textContent=EMO[top].e;moodName.textContent=EMO[top].n;
-  moodHint.textContent=(baseline?'':'（未校准）')+'置信度 '+Math.round(tv*100)+'%';
+  moodEmoji.textContent=EMO[top].e;moodName.textContent=t('emo_'+top);
+  moodHint.textContent=(baseline?'':t('uncal'))+t('conf',{p:Math.round(tv*100)});
   for(const k of keys){const v=Math.round(sm[k]*100);barF[k].f.style.width=v+'%';barF[k].v.textContent=v+'%';}
 
-  const mk=[['嘴角上扬',dbg.nSmile],['张口',dbg.nOpen],['挑眉',dbg.nBrowUp],
-    ['皱眉挤压',dbg.nFurrow],['睁眼',dbg.nEyeWide],['突变(惊讶)',dbg.dynSurprise]];
+  const mk=[[t('m_smile'),dbg.nSmile],[t('m_open'),dbg.nOpen],[t('m_brow'),dbg.nBrowUp],
+    [t('m_furrow'),dbg.nFurrow],[t('m_eyewide'),dbg.nEyeWide],[t('m_sudden'),dbg.dynSurprise]];
   const html=mk.map(([n,v])=>`<div>${n} <b>${Math.round(v*100)}%</b></div>`).join('');
   if(html!==prevMetric){metricsEl.innerHTML=html;prevMetric=html;}
   const deg=r=>Math.round(r*180/Math.PI);
   poseEl.innerHTML=`Roll <b>${deg(pose.roll)}°</b>·Yaw <b>${(pose.yaw*45|0)}°</b>·Pitch <b>${(pose.pitch*45|0)}°</b>
-    ${extreme?'<span class="pill warn">姿态偏大·降权</span>':'<span class="pill">姿态良好</span>'}
-    ${baseline?'<span class="pill">已校准</span>':'<span class="pill warn">未校准</span>'}`;
+    ${extreme?`<span class="pill warn">${t('posePoor')}</span>`:`<span class="pill">${t('poseOk')}</span>`}
+    ${baseline?`<span class="pill">${t('pill_cal')}</span>`:`<span class="pill warn">${t('pill_uncal')}</span>`}`;
 
   // 动作标签(blendshape)
   const acts=[];
-  if((m.jawOpen||0)>0.35)acts.push('😮 张嘴');
-  if(((m.mouthSmileLeft||0)+(m.mouthSmileRight||0))/2>0.4)acts.push('😊 微笑');
-  if((m.browInnerUp||0)>0.4)acts.push('🤨 挑眉');
-  if(((m.browDownLeft||0)+(m.browDownRight||0))/2>0.4)acts.push('😤 皱眉');
-  if((m.eyeBlinkLeft||0)>0.5&&(m.eyeBlinkRight||0)>0.5)acts.push('😑 闭眼');
-  else if((m.eyeBlinkLeft||0)>0.5)acts.push('😉 眨左眼');
-  else if((m.eyeBlinkRight||0)>0.5)acts.push('😉 眨右眼');
-  if((m.cheekPuff||0)>0.3)acts.push('🐡 鼓腮');
-  const tk=acts.join(',');if(tk!==prevTags){prevTags=tk;tagsEl.innerHTML=acts.length?acts.map(t=>`<span class="tag">${t}</span>`).join(''):'<span class="status">（做点动作试试）</span>';}
+  if((m.jawOpen||0)>0.35)acts.push(t('a_jaw'));
+  if(((m.mouthSmileLeft||0)+(m.mouthSmileRight||0))/2>0.4)acts.push(t('a_smile'));
+  if((m.browInnerUp||0)>0.4)acts.push(t('a_brow'));
+  if(((m.browDownLeft||0)+(m.browDownRight||0))/2>0.4)acts.push(t('a_frown'));
+  if((m.eyeBlinkLeft||0)>0.5&&(m.eyeBlinkRight||0)>0.5)acts.push(t('a_closed'));
+  else if((m.eyeBlinkLeft||0)>0.5)acts.push(t('a_winkL'));
+  else if((m.eyeBlinkRight||0)>0.5)acts.push(t('a_winkR'));
+  if((m.cheekPuff||0)>0.3)acts.push(t('a_puff'));
+  const tk=acts.join(',');if(tk!==prevTags){prevTags=tk;tagsEl.innerHTML=acts.length?acts.map(t=>`<span class="tag">${t}</span>`).join(''):`<span class="status">${t('tryAction')}</span>`;}
 
   // ===== 绘制线条 =====
   drawFeature(FaceLandmarker.FACE_LANDMARKS_FACE_OVAL,'#6cf0ff',2.4);
@@ -523,10 +537,10 @@ function process(res){
   drawFeature(FaceLandmarker.FACE_LANDMARKS_RIGHT_IRIS,'#9dfcff',1.4);
   drawNose();drawAxis();
   if(showMuscle){
-    muscle(px(61),px(50),dbg.nSmile,'颧大肌');muscle(px(291),px(280),dbg.nSmile,'');
-    muscle(px(105),px(66),dbg.nBrowUp,'额肌');muscle(px(334),px(296),dbg.nBrowUp,'');
-    muscle(px(55),px(285),dbg.nFurrow,'皱眉肌');muscle(px(0),px(17),dbg.nOpen,'口轮匝肌');
-    muscle(px(61),px(43),dbg.nFrown,'降口角肌');muscle(px(291),px(273),dbg.nFrown,'');
+    muscle(px(61),px(50),dbg.nSmile,t('mu_zyg'));muscle(px(291),px(280),dbg.nSmile,'');
+    muscle(px(105),px(66),dbg.nBrowUp,t('mu_front'));muscle(px(334),px(296),dbg.nBrowUp,'');
+    muscle(px(55),px(285),dbg.nFurrow,t('mu_corr'));muscle(px(0),px(17),dbg.nOpen,t('mu_orb'));
+    muscle(px(61),px(43),dbg.nFrown,t('mu_dao'));muscle(px(291),px(273),dbg.nFrown,'');
   }
   // ===== 中间：黄色卡通脸(默认) 或 3D形象 =====
   const mat=(res.facialTransformationMatrixes&&res.facialTransformationMatrixes.length)?res.facialTransformationMatrixes[0].data:null;
@@ -638,7 +652,7 @@ function sampleAt(data,w,h,nx,ny){ // nx,ny 归一化(未镜像) 取 5x5 平均
 function median(arr){const s=arr.filter(Boolean).sort((a,b)=>bright(a)-bright(b));return s.length?s[Math.floor(s.length/2)]:null;}
 
 function captureAvatar(){
-  if(!lastLandmarks){statusEl.textContent='先让脸出现在画面里，再点生成';return;}
+  if(!lastLandmarks){setStatus('st_faceFirst');return;}
   const L=lastLandmarks, vw=video.videoWidth,vh=video.videoHeight;
   off.width=vw;off.height=vh;offc.drawImage(video,0,0,vw,vh);
   const data=offc.getImageData(0,0,vw,vh).data;
@@ -667,13 +681,13 @@ let latestVRM=null, renderer,scene,camera,controls,clock,currentVrm=null,mirror=
 let headEuler={x:0,y:0,z:0};
 btn3d.onclick=()=>{
   use3D=!use3D;
-  btn3d.textContent='🧑 3D人物：'+(use3D?'开':'关');
+  renderButtons();
   cartoon.style.display=use3D?'none':'block';
   avatarWrap.style.display=use3D?'block':'none';
-  midTitle.textContent=use3D?'我的3D形象（镜像你的表情）':'我的Q版脸（镜像你的动作）';
+  
   if(use3D){
     if(!renderer){initThree();}
-    if(!currentVrm){fetch('./models/avatar.vrm',{method:'HEAD'}).then(r=>{if(r.ok)loadVRM('./models/avatar.vrm');else avatarHint.innerHTML='没找到 avatar.vrm<br>点「📦 加载.vrm形象」选一个';}).catch(()=>{});}
+    if(!currentVrm){fetch('./models/avatar.vrm',{method:'HEAD'}).then(r=>{if(r.ok)loadVRM('./models/avatar.vrm');else{avatarHint.dataset.i18nHtml='avatarMissing';avatarHint.innerHTML=t('avatarMissing');}}).catch(()=>{});}
     // 显示后修正画布尺寸
     setTimeout(()=>{if(renderer){const w=avatarWrap.clientWidth,h=avatarWrap.clientHeight;camera.aspect=w/h;camera.updateProjectionMatrix();renderer.setSize(w,h);}},50);
   }
@@ -697,7 +711,7 @@ function poseArms(){if(!currentVrm||!currentVrm.humanoid)return;const h=currentV
   set('leftUpperArm',0,0,-1.15);set('rightUpperArm',0,0,1.15);set('leftLowerArm',0,-0.2,-0.1);set('rightLowerArm',0,0.2,0.1);}
 function loadVRM(url){
   if(!renderer)initThree();
-  statusEl.textContent='加载形象中…';
+  setStatus('st_vrmLoading');
   const loader=new GLTFLoader();loader.register(p=>new VRMLoaderPlugin(p));
   loader.load(url,(gltf)=>{
     const vrm=gltf.userData.vrm;
@@ -707,13 +721,13 @@ function loadVRM(url){
     const head=vrm.humanoid?.getNormalizedBoneNode('head');
     if(head){const p=new THREE.Vector3();head.getWorldPosition(p);
       camera.position.set(p.x,p.y-0.05,p.z+0.8);controls.target.set(p.x,p.y-0.18,p.z);controls.update();}
-    if(avatarHint)avatarHint.style.display='none';statusEl.textContent='✅ 形象已加载';
-  },undefined,(err)=>{statusEl.textContent='形象加载失败：'+(err?.message||err);});
+    if(avatarHint)avatarHint.style.display='none';setStatus('st_vrmLoaded');
+  },undefined,(err)=>{setStatus('st_vrmFail',{e:err?.message||err});});
 }
 vrmFile.onchange=e=>{const f=e.target.files[0];if(f)loadVRM(URL.createObjectURL(f));};
 avatarWrap.addEventListener('dragover',e=>e.preventDefault());
 avatarWrap.addEventListener('drop',e=>{e.preventDefault();const f=e.dataTransfer.files[0];if(f&&f.name.endsWith('.vrm'))loadVRM(URL.createObjectURL(f));});
-bodyBtn.onclick=()=>{showBody=!showBody;bodyBtn.textContent='🧍 身体：'+(showBody?'显示':'隐藏');applyBodyVisibility();};
+bodyBtn.onclick=()=>{showBody=!showBody;renderButtons();applyBodyVisibility();};
 function swapLR(n){if(n.endsWith('Left'))return n.slice(0,-4)+'Right';if(n.endsWith('Right'))return n.slice(0,-5)+'Left';return n;}
 function animate3d(){
   requestAnimationFrame(animate3d);
@@ -750,12 +764,12 @@ function animate3d(){
 // ===================== 情绪反馈伙伴 =====================
 // 它不是镜像你，而是对你的情绪做出"回应"：你开心它替你高兴，你难过它来安慰。
 const REACT={
-  happy:   {react:'happy',  color:'#ffcf5a', lines:['看到你笑，我也超开心！😄','你今天状态真好呀～','这个笑容我给满分！✨','开心就要一起分享！🎉']},
-  surprise:{react:'surprise',color:'#7cc4ff', lines:['哦？发生什么啦？😮','哇，被你吓一跳！','这么惊讶，快跟我说说～','什么事这么意外？']},
-  sad:     {react:'comfort', color:'#9db4ff', lines:['别难过，我陪着你～🫂','怎么了？抱抱你','会好起来的，相信我','深呼吸，一切都会没事的']},
-  angry:   {react:'calm',    color:'#ff9db0', lines:['先别急，慢慢说～','深呼吸，放轻松点','我懂你的感受，冷静一下','喝口水，消消气嘛']},
-  neutral: {react:'idle',    color:'#8fe6c0', lines:['我在这儿陪着你～','做个表情让我看看？','今天过得怎么样？','随便动动脸，我会回应你']},
-};
+  happy:   {react:'happy',  color:'#ffcf5a'},
+  surprise:{react:'surprise',color:'#7cc4ff'},
+  sad:     {react:'comfort', color:'#9db4ff'},
+  angry:   {react:'calm',    color:'#ff9db0'},
+  neutral: {react:'idle',    color:'#8fe6c0'},
+};  // 台词在 i18n.json 的 lines 里（日/中/英）
 let compEmo='neutral', compShown='', bubbleIdx=0, emoStableFrames=0, tHold=0;
 let compTarget='idle', compCur={mouth:0,brow:0,eye:1}, compTime=0;
 
@@ -766,8 +780,10 @@ function updateCompanion(top,conf){
   if(emoStableFrames===6 || (compShown==='' )){
     if(top!==compShown || compShown===''){
       compShown=top; const r=REACT[top];
-      bubbleIdx=(bubbleIdx+1)%r.lines.length;
-      bubble.textContent=r.lines[bubbleIdx];
+      const lines=t('lines')[top];
+      bubbleIdx=(bubbleIdx+1)%lines.length;
+      bubble.textContent=lines[bubbleIdx];
+      voice.say(lines[bubbleIdx],`${top}_${bubbleIdx}`);
       bubble.style.background='rgba(255,255,255,.06)';
       bubble.style.borderColor=r.color;
       bubble.style.color=r.color;
@@ -857,6 +873,37 @@ function heart(x,y,s){gctx.save();gctx.fillStyle='#ff7a95';gctx.translate(x,y);g
   gctx.bezierCurveTo(0,s,s,s*0.7,s,s*0.2);
   gctx.bezierCurveTo(s,-s*0.3,0,-s*0.3,0,s*0.3);gctx.fill();gctx.restore();}
 drawCompanion('idle',0);
+
+// ===================== 多语言 + 语音：统一重绘 =====================
+function renderButtons(){
+  calBtn.textContent=t(calState==='done'?'recalBtn':'calBtn');
+  btn3d.textContent=t('btn3d',{s:t(use3D?'on':'off')});
+  bodyBtn.textContent=t('bodyBtn',{s:t(showBody?'show':'hide')});
+  videoBtn.textContent=t('videoBtn',{s:t(video.classList.contains('hide')?'hide':'faint')});
+  muscleBtn.textContent=t('muscleBtn',{s:t(showMuscle?'show':'hide')});
+  voiceBtn.textContent=t('voiceBtn',{s:t(voice.on?'on':'off')});
+  midTitle.textContent=t(use3D?'h_3d':'h_cartoon');
+  document.querySelectorAll('#langsw button').forEach(b=>b.classList.toggle('on',b.dataset.lang===getLang()));
+}
+function renderVoiceInfo(){
+  const md=voice.mode();
+  voiceInfo.textContent=md.kind==='file'?t('v_file'):md.kind==='tts'?t('v_tts',{n:md.name}):t('v_none');
+}
+function renderBubble(){
+  const lines=t('lines')[compShown||'neutral'];
+  bubble.textContent=lines[bubbleIdx%lines.length];
+}
+function renderAll(){
+  renderButtons();renderW();renderAff();renderVoiceInfo();renderBubble();drawAffect();
+  for(const k of keys)barF[k].l.textContent=`${EMO[k].e} ${t('emo_'+k)}`;
+  setStatus(...lastStatus);prevMetric='';prevTags='';
+}
+const voiceBtn=$('voiceBtn'), voiceInfo=$('voiceInfo');
+voiceBtn.onclick=()=>{voice.on=!voice.on;if(!voice.on)voice.stop();renderButtons();};
+voice.onchange=renderVoiceInfo;
+document.querySelectorAll('#langsw button').forEach(b=>b.onclick=()=>setLang(b.dataset.lang));
+onLang(()=>{voice.stop();renderAll();});
+renderAll();
 </script>
 </body>
 </html>

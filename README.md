@@ -199,6 +199,15 @@ curl localhost:8002/api/affect                           # 机器人控制端读
 
 ---
 
+## 语言（日 / 中 / EN）与伙伴语音
+
+- 页面右上角「日 / 中 / EN」切换语言，默认日语，会记住上次的选择；也可以用 `?lang=ja|zh|en` 指定。
+  所有界面文字和伙伴台词都在 `static/i18n.json`，改词只改这一个文件。
+- 情绪反馈伙伴会**用当前界面语言把台词念出来**（「🔊 音声/语音/Voice」按钮可开关），同一时间只说一种语言。
+  - 优先播放 `static/voice/{ja,zh,en}/*.mp3`：在能上网的电脑上跑一次 `pip install edge-tts && python tools/make_voices.py` 生成（约 1 MB），提交进仓库后 Thor 离线也能用，音质最好。
+  - 没有音频文件时，退回浏览器/系统自带的语音合成；系统没有该语言的声音时，伙伴下方会提示。
+- Thor 本身没有喇叭：需要显示器喇叭（HDMI/DP）、USB 音箱/耳机或蓝牙音箱。
+
 ## 使用步骤（打开页面后）
 
 1. 点「开启摄像头」，允许摄像头权限（RealSense 用户在 Firefox 权限框选 `RealSenseRGB`）。

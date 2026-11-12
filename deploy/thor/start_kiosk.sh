@@ -42,6 +42,7 @@ fi
 if snap list firefox >/dev/null 2>&1; then PROF="$HOME/snap/firefox/common/faceecho-kiosk"; else PROF="$HOME/.faceecho-firefox"; fi
 mkdir -p "$PROF"
 cat > "$PROF/user.js" <<'EOF'
+user_pref("media.autoplay.default", 0);              // 允许伙伴的语音自动播放（kiosk 自动启动时没有点击）
 user_pref("browser.shell.checkDefaultBrowser", false);
 user_pref("browser.sessionstore.resume_from_crash", false);
 user_pref("datareporting.policy.dataSubmissionEnabled", false);
