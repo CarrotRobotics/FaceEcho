@@ -238,7 +238,7 @@ if(new URLSearchParams(location.search).get('robot')==='1')robotChk.checked=true
     affState.className='pill';affState.textContent='GRU-D 已加载'+(md.w_danger?` · W_DANGER=${md.w_danger}`:'');
     affHint.innerHTML=`算法：${md.algorithm||'GRU-D + 安全损失'}`+(v?`<br>验证集(35%丢帧)：CCC v/a ${v.ccc_v.toFixed(2)}/${v.ccc_a.toFixed(2)}，危险违规 ${(v.danger_viol*100).toFixed(1)}%`:'')+
       `<br>没看到脸时继续按 GRU-D 动力学外推，距离不会卡在旧值。`;
-    driveBtn.disabled=false;driveByVA=true;driveBtn.textContent='🫂 伙伴依据：连续情绪(GRU-D)';
+    driveBtn.disabled=false;driveByVA=true;driveBtn.textContent='🫂 伙伴依据：连续情绪(GRU-D)';drawAffect();
   }catch(e){affEst=null;affState.textContent='模型未加载';drawAffect();}
 })();
 driveBtn.onclick=()=>{driveByVA=!driveByVA;driveBtn.textContent='🫂 伙伴依据：'+(driveByVA?'连续情绪(GRU-D)':'表情分类');compShown='';};
