@@ -7,6 +7,11 @@
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 #include "config.h"
+#ifndef ROTATION
+// 屏幕方向 0~3（每 +1 顺时针转 90°）：1 = 横屏（出厂方向），0 = 逆时针转 90° 竖屏，3 = 顺时针转 90° 竖屏，2 = 横屏倒置
+// 也可以在 config.h 里写 #define ROTATION 1 覆盖这里
+#define ROTATION 0
+#endif
 
 static M5Canvas canvas(&M5.Display);
 
@@ -50,8 +55,8 @@ static void connectWiFi() {
   M5.Display.fillScreen(TFT_BLACK);
   M5.Display.setFont(&fonts::efontJA_16);
   M5.Display.setTextDatum(middle_center);
-  M5.Display.drawString("Wi-Fi 接続中…", 160, 110);
-  M5.Display.drawString(WIFI_SSID, 160, 135);
+  M5.Display.drawString("Wi-Fi 接続中…", M5.Display.width() / 2, M5.Display.height() / 2 - 12);
+  M5.Display.drawString(WIFI_SSID, M5.Display.width() / 2, M5.Display.height() / 2 + 12);
   uint32_t t0 = millis();
   while (WiFi.status() != WL_CONNECTED && millis() - t0 < 20000) delay(200);
 }
@@ -119,7 +124,9 @@ static void drawFace() {
   Look L = lookFor(st.ok ? st.mood : "neutral");
   String react = L.react;
   canvas.fillScreen(rgb(L.bg));
-  int cx = 160, cy = 92 + (int)(sinf(t * 2) * 3), R = 62;
+  const int W = canvas.width(), H = canvas.height();
+  const bool portrait = H > W;
+  int cx = W / 2, cy = (portrait ? H * 34 / 100 : 92) + (int)(sinf(t * 2) * 3), R = portrait ? 70 : 62;
   // 天线 + 身体
   canvas.drawLine(cx, cy - R, cx, cy - R - 14, rgb(L.body));
   canvas.drawLine(cx + 1, cy - R, cx + 1, cy - R - 14, rgb(L.body));
@@ -155,16 +162,28 @@ static void drawFace() {
   }
 
   // 台词气泡
-  canvas.fillRoundRect(8, 170, 304, 34, 8, rgb(0x15172a));
-  canvas.drawRoundRect(8, 170, 304, 34, 8, rgb(L.accent));
+  const int bubY = portrait ? H * 66 / 100 : 170, bubH = portrait ? 56 : 34;
+  canvas.fillRoundRect(8, bubY, W - 16, bubH, 8, rgb(0x15172a));
+  canvas.drawRoundRect(8, bubY, W - 16, bubH, 8, rgb(L.accent));
   canvas.setFont(st.lang == "zh" ? &fonts::efontCN_16 : &fonts::efontJA_16);
   canvas.setTextColor(rgb(L.accent)); canvas.setTextDatum(middle_center);
   String line = !st.ok ? String("Thor ") + (WiFi.status() == WL_CONNECTED ? "offline" : "Wi-Fi ×") : st.text;
-  canvas.drawString(line, 160, 187);
+  canvas.setTextSize(1.0f);
+  int tw = canvas.textWidth(line), avail = W - 28;
+  if (tw > avail && portrait && tw <= avail * 2) {          // 竖屏：拆成两行
+    int cut = line.length() / 2;
+    while (cut < (int)line.length() && (line[cut] & 0xC0) == 0x80) cut++;   // 不切断 UTF-8 字符
+    canvas.drawString(line.substring(0, cut), W / 2, bubY + bubH / 2 - 10);
+    canvas.drawString(line.substring(cut), W / 2, bubY + bubH / 2 + 10);
+  } else {
+    if (tw > avail) canvas.setTextSize(max(0.6f, avail / (float)tw));      // 太长就缩小
+    canvas.drawString(line, W / 2, bubY + bubH / 2);
+    canvas.setTextSize(1.0f);
+  }
 
   // 建议距离条 0.3 ~ 2.5 m
   canvas.setFont(&fonts::Font2); canvas.setTextColor(TFT_WHITE); canvas.setTextDatum(middle_left);
-  int bx = 70, bw = 200, by = 222;
+  int bx = 70, bw = W - 120, by = H - 18;
   for (int i = 0; i < bw; i++) {           // 红→黄→绿→青 渐变
     float f = i / (float)bw;
     uint8_t r = f < .45f ? 255 - (uint8_t)(f / .45f * 161) : 94 - (uint8_t)((f - .45f) / .55f * 86);
@@ -173,13 +192,13 @@ static void drawFace() {
     canvas.drawFastVLine(bx + i, by - 4, 8, M5.Display.color565(r, g, b));
   }
   if (st.ok && !isnan(st.dist)) {
-    int mx = bx + (int)((st.dist - 0.3f) / 2.2f * bw);
+    int mx = bx + (int)(constrain((st.dist - 0.3f) / 2.2f, 0.0f, 1.0f) * bw);
     canvas.fillRect(mx - 2, by - 8, 4, 16, TFT_WHITE);
     canvas.drawString(String(st.dist, 2) + "m", 8, by);
   } else canvas.drawString("-- m", 8, by);
   canvas.setTextDatum(middle_right);
   canvas.setTextColor(st.observed ? rgb(0x5ee6a0) : rgb(0xffcf5a));
-  canvas.drawString(muted ? "MUTE" : (st.observed ? "face" : "extrap"), 316, by);
+  canvas.drawString(muted ? "MUTE" : (st.observed ? "face" : "extrap"), W - 4, by);
   canvas.pushSprite(0, 0);
 }
 
@@ -187,11 +206,11 @@ void setup() {
   auto cfg = M5.config();
   M5.begin(cfg);
   Serial.begin(115200);
-  M5.Display.setRotation(1);
+  M5.Display.setRotation(ROTATION);
   M5.Speaker.begin();
   M5.Speaker.setVolume(VOLUME);
   canvas.setPsram(true);
-  canvas.createSprite(320, 240);
+  canvas.createSprite(M5.Display.width(), M5.Display.height());
   connectWiFi();
   Serial.printf("IP %s\n", WiFi.localIP().toString().c_str());
 }
