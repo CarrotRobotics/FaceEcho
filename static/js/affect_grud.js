@@ -34,6 +34,12 @@ export class SafeAffectEstimator {
     this.Wih = flat(json.gru.w_ih); this.Whh = flat(json.gru.w_hh);
     this.bih = Float32Array.from(json.gru.b_ih); this.bhh = Float32Array.from(json.gru.b_hh);
     this.Wo = flat(json.head.w); this.bo = Float32Array.from(json.head.b);
+    // 可选：表情分类头（多任务模型才有；tools/train_export_grud_mt.py 导出）
+    if (json.expr_head) {
+      this.exprClasses = json.expr_head.classes;
+      this.We = flat(json.expr_head.w); this.be = Float32Array.from(json.expr_head.b);
+      this.ge = new Float32Array(this.exprClasses.length);
+    }
     // 工作缓冲
     this.h = new Float32Array(H); this.xLast = new Float32Array(D);
     this.x = new Float32Array(D); this.xh = new Float32Array(D); this.dvec = new Float32Array(D);
@@ -92,12 +98,21 @@ export class SafeAffectEstimator {
     if (observed) this.tLastObs = tSec;
     this.tPrev = tSec;
 
+    let expr = null;
+    if (this.We) {                                    // 表情概率（softmax）
+      const K = this.exprClasses.length;
+      matvec(this.We, this.be, this.h, K, H, this.ge);
+      let mx = -Infinity; for (let k = 0; k < K; k++) mx = Math.max(mx, this.ge[k]);
+      let z = 0; expr = {};
+      for (let k = 0; k < K; k++) { const e = Math.exp(this.ge[k] - mx); expr[this.exprClasses[k]] = e; z += e; }
+      for (const k in expr) expr[k] /= z;
+    }
     const v = this.y[0], a = this.y[1], P = this.dist;
     const distRaw = P.c0 + P.cv * v + P.ca * Math.max(a, 0);
     this.out = {
       v, a, distRaw,
       dist: Math.min(P.d_max, Math.max(P.d_min, distRaw)),
-      observed, delta,
+      observed, delta, expr,
       gap: observed ? 0 : delta,          // 已连续多久没看到脸（秒）
     };
     return this.out;

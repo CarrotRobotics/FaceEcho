@@ -27,6 +27,23 @@ python train_export_grud.py --data_root data/affwild2 --w_danger 4 --out grud_sa
 > ⚠️ 权重是用有 EULA 的数据训出来的。`.gitignore` 默认不提交它，用 `scp` 拷到 Thor；
 > 要放进公开仓库前先确认 Aff-Wild2 / AFEW-VA 的协议是否允许发布衍生模型。
 
+### （推荐）带表情头的多任务模型
+
+单任务 GRU-D 只输出 valence/arousal，网页的 5 类情绪只能靠换算，惊讶和生气容易混。
+用 Aff-Wild2 的表情标注（ABAW Annotations 里的 `EXPR_*_Challenge`）给同一个 GRU-D 加一个 7 类表情头，
+VA 头和安全感知损失保持与论文一致：
+
+```bash
+conda activate face && cd ~/FaceLNN
+cp ~/FaceEcho/tools/preprocess_affwild2_mt.py ~/FaceEcho/tools/train_export_grud_mt.py ~/FaceEcho/tools/train_export_grud.py .
+python preprocess_affwild2_mt.py --anno_root <ABAW 标注目录> --frames_root <cropped_aligned 目录> \
+    --out_root data/affwild2_mt --model ~/FaceEcho/static/models/face_landmarker.task --limit 5   # 先试 5 个
+python preprocess_affwild2_mt.py ...（同上，去掉 --limit）                                     # 全量，可断点续跑
+python train_export_grud_mt.py --data_root data/affwild2_mt --w_danger 4 --out grud_safety.json
+```
+
+导出的 `grud_safety.json` 直接替换旧的即可；网页检测到表情头会自动改用它（面板里显示「表情头：有」）。
+
 ## 第 2 步 · 把工程放到 Thor 上
 
 ```bash

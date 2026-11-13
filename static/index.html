@@ -248,6 +248,13 @@ const VA_PROTO={happy:[0.25,0.10],surprise:[0.05,0.40],sad:[-0.22,-0.10],angry:[
 function vaProbs(o){const v=o.v-affBase.v,a=o.a-affBase.a,T=0.03,p={};let z=0;
   for(const k in VA_PROTO){const d=(v-VA_PROTO[k][0])**2+(a-VA_PROTO[k][1])**2;p[k]=Math.exp(-d/T);z+=p[k];}
   for(const k in p)p[k]/=z;return p;}
+// 有表情头时：直接用模型学到的表情概率（7 类合并成网页的 5 类：生气含厌恶，惊讶含恐惧）；
+// 没有表情头（旧权重）时：退回 valence/arousal 原型点换算。
+function affProbs(o){
+  if(o.expr){const e=o.expr;return {happy:e.happiness||0,surprise:(e.surprise||0)+(e.fear||0),sad:e.sadness||0,
+    angry:(e.anger||0)+(e.disgust||0),neutral:e.neutral||0};}
+  return vaProbs(o);
+}
 const topOf=p=>{let top='neutral',tv=-1;for(const k in p)if(p[k]>tv){tv=p[k];top=k;}return [top,tv];};
 let compSay={id:0,line:'',lang:'ja',text:''};   // 伙伴最近说的一句（推给 CoreS3 等外部设备）
 let affEst=null, driveByVA=false, affLast=null, affPostBusy=false, affPostT=0;
@@ -268,7 +275,8 @@ function renderAff(){
   const md=affEst.meta||{}, v=md.val_drop35||md.val_drop0;
   affState.className='pill';affState.textContent=t('aff_loaded')+(md.w_danger?` · W_DANGER=${md.w_danger}`:'');
   affHint.innerHTML=t('aff_info',{a:md.algorithm||'GRU-D + safety loss'})+
-    (v?'<br>'+t('aff_val',{v:v.ccc_v.toFixed(2),ar:v.ccc_a.toFixed(2),d:(v.danger_viol*100).toFixed(1)}):'')+'<br>'+t('aff_extrap');
+    (v&&v.ccc_v!==undefined?'<br>'+t('aff_val',{v:v.ccc_v.toFixed(2),ar:v.ccc_a.toFixed(2),d:(v.danger_viol*100).toFixed(1)}):'')+
+    (affEst.exprClasses?'<br>'+t('aff_expr',{f:((md.val_drop0||{}).expr_f1??NaN).toFixed(2)}):'<br>'+t('aff_noexpr'))+'<br>'+t('aff_extrap');
 }
 driveBtn.onclick=()=>{driveByVA=!driveByVA;renderAff();compShown='';};
 
@@ -488,7 +496,7 @@ function process(res){
     // 丢帧：GRU-D 继续外推（旧版这里直接 return，情绪/伙伴都会冻结）
     const o=affectStep(null,tNow);
     // 短暂丢帧：沿用 GRU-D 外推；超过 2 秒没人：伙伴回到待机，不对“推测出的情绪”做反应
-    if(o&&driveByVA)updateCompanion(o.gap>2?'neutral':topOf(vaProbs(o))[0],0.5);
+    if(o&&driveByVA)updateCompanion(o.gap>2?'neutral':topOf(affProbs(o))[0],0.5);
     return;}
   P=res.faceLandmarks[0]; lastLandmarks=P;
   const pose=estimatePose();buildQ(pose.roll);
@@ -513,7 +521,7 @@ function process(res){
 
   // ===== 情绪来源：GRU-D（论文模型，默认）或旧的“几何 + Blendshape”规则融合 =====
   const useGRUD=!!(aff&&driveByVA);
-  if(useGRUD){const pr=vaProbs(aff);for(const k in sm)sm[k]=lerp(sm[k],pr[k],0.5);}   // GRU-D 本身是时序平滑的，只轻微平滑
+  if(useGRUD){const pr=affProbs(aff);for(const k in sm)sm[k]=lerp(sm[k],pr[k],0.5);}   // GRU-D 本身是时序平滑的，只轻微平滑
   else{
     let fused={};for(const k of keys)fused[k]=wGeo*geo.sc[k]+(1-wGeo)*bs[k];
     fused=norm(fused);
