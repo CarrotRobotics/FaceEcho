@@ -15,7 +15,8 @@ Aff-Wild2 多任务预处理：cropped_aligned 人脸图 → MediaPipe 52 维 bl
 划分：任何一个任务里属于 Validation_Set 的视频 → val（避免信息泄漏），其余 → train。
 
 用法：
-  python preprocess_affwild2_mt.py --anno_root ~/data/ABAW_Annotations --frames_root ~/data/cropped_aligned \\
+  python preprocess_affwild2_mt.py --anno_root "Aff-Wild2/annotations/ABAW Annotations" \\
+      --frames_root Aff-Wild2/cropped_aligned Aff-Wild2/cropped_aligned/cropped_aligned \\
       --out_root data/affwild2_mt --model face_landmarker.task --workers 16
   先试 5 个视频：加 --limit 5      断点续跑：已存在的 npz 自动跳过
 """
@@ -28,7 +29,8 @@ _LM = None
 
 
 def find_task_dir(root, pattern):
-    hits = [d for d in glob.glob(os.path.join(root, "**", pattern), recursive=True) if os.path.isdir(d)]
+    hits = [d for d in glob.glob(os.path.join(root, "**", pattern), recursive=True)
+            if os.path.isdir(d) and "__MACOSX" not in d]          # 跳过 Mac 压缩包带的垃圾目录
     hits = [d for d in hits if os.path.isdir(os.path.join(d, "Train_Set"))]
     return hits[0] if hits else None
 
@@ -80,8 +82,18 @@ def blendshapes(img_bgr):
     return None
 
 
+def frame_index(fdir):
+    """{帧号: 路径}。兼容 00001.jpg / 1.jpg / 000001.png 等命名。"""
+    out = {}
+    for f in os.listdir(fdir):
+        stem, ext = os.path.splitext(f)
+        if ext.lower() in (".jpg", ".jpeg", ".png") and stem.isdigit():
+            out[int(stem)] = os.path.join(fdir, f)
+    return out
+
+
 def process(job):
-    name, split, va_path, ex_path, frames_root, out_path = job
+    name, split, va_path, ex_path, fdir, out_path = job
     import cv2
     va, va_valid = read_va(va_path) if va_path else (None, None)
     ex = read_expr(ex_path) if ex_path else None
@@ -91,10 +103,10 @@ def process(job):
     pad = lambda x, v: np.concatenate([x, np.full((T - len(x),) + x.shape[1:], v, x.dtype)]) if len(x) < T else x[:T]
     va, va_valid, ex = pad(va, 0), pad(va_valid, 0), pad(ex, -1)
     feat = np.zeros((T, 52), np.float32); obs = np.zeros(T, np.float32)
-    fdir = os.path.join(frames_root, name)
+    frames = frame_index(fdir)
     for i in range(T):
-        p = os.path.join(fdir, f"{i+1:05d}.jpg")
-        if not os.path.exists(p):
+        p = frames.get(i + 1)                       # 第 i 行标注 ↔ 第 i+1 帧
+        if p is None:
             continue
         img = cv2.imread(p)
         if img is None:
@@ -112,7 +124,7 @@ def process(job):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--anno_root", required=True)
-    ap.add_argument("--frames_root", required=True)
+    ap.add_argument("--frames_root", nargs="+", required=True, help="一个或多个 cropped_aligned 目录（batch1/batch2 可分开）")
     ap.add_argument("--out_root", default="data/affwild2_mt")
     ap.add_argument("--model", default="face_landmarker.task")
     ap.add_argument("--workers", type=int, default=max(1, (os.cpu_count() or 2) - 2))
@@ -133,16 +145,26 @@ def main():
         for sp in SPLITS:
             for p in glob.glob(os.path.join(d, sp, "*.txt")):
                 n = os.path.splitext(os.path.basename(p))[0]
+                if n.startswith("._"): continue
                 v = vids.setdefault(n, {"va": None, "ex": None, "val": False})
                 v[task] = p; v["val"] |= sp == "Validation_Set"
-    jobs, miss = [], 0
+    # 人脸图文件夹：在所有 --frames_root 里找同名文件夹
+    fdirs = {}
+    for r in a.frames_root:
+        for d in os.listdir(r):
+            if os.path.isdir(os.path.join(r, d)) and d not in fdirs:
+                fdirs[d] = os.path.join(r, d)
+    jobs, miss = [], []
     for n, v in sorted(vids.items()):
-        if not os.path.isdir(os.path.join(a.frames_root, n)):
-            miss += 1; continue
+        if n not in fdirs:
+            miss.append(n); continue
         split = "val" if v["val"] else "train"
         out = os.path.join(a.out_root, split, n + ".npz")
         if os.path.exists(out): continue
-        jobs.append((n, split, v["va"], v["ex"], a.frames_root, out))
+        jobs.append((n, split, v["va"], v["ex"], fdirs[n], out))
+    if miss:
+        print(f"！{len(miss)} 个视频找不到人脸图文件夹（例如 {miss[:3]}）——检查 --frames_root 是否漏了目录")
+    miss = len(miss)
     if a.limit: jobs = jobs[: a.limit]
     print(f"视频共 {len(vids)}，找不到人脸图文件夹 {miss}，待处理 {len(jobs)}（{a.workers} 进程）")
 
