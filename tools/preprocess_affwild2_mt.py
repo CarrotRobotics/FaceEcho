@@ -65,16 +65,20 @@ def _init(model_path):
     from mediapipe.tasks.python import vision
     opts = vision.FaceLandmarkerOptions(base_options=python.BaseOptions(model_asset_path=model_path),
                                         running_mode=vision.RunningMode.IMAGE, num_faces=1,
+                                        min_face_detection_confidence=0.3, min_face_presence_confidence=0.3,
                                         output_face_blendshapes=True)
     _LM = vision.FaceLandmarker.create_from_options(opts)
 
 
 def blendshapes(img_bgr):
-    """返回 52 维 blendshape 或 None。112×112 的 cropped_aligned 脸几乎占满画面，检测不到时加黑边再试一次。"""
+    """返回 52 维 blendshape 或 None。
+    cropped_aligned 是 112×112、脸几乎占满画面——对 MediaPipe 的人脸检测器来说太小、太满。
+    先放大到 224，再依次加 0 / 25% / 50% 黑边重试（检测器需要脸周围留点边）。"""
     import cv2, mediapipe as mp
-    for pad in (0, 0.5):
-        im = img_bgr if pad == 0 else cv2.copyMakeBorder(img_bgr, *(int(img_bgr.shape[0] * pad),) * 4,
-                                                         cv2.BORDER_CONSTANT, value=0)
+    big = cv2.resize(img_bgr, (224, 224), interpolation=cv2.INTER_CUBIC) if img_bgr.shape[0] < 200 else img_bgr
+    for pad in (0, 0.25, 0.5):
+        im = big if pad == 0 else cv2.copyMakeBorder(big, *(int(big.shape[0] * pad),) * 4,
+                                                     cv2.BORDER_CONSTANT, value=0)
         rgb = cv2.cvtColor(im, cv2.COLOR_BGR2RGB)
         res = _LM.detect(mp.Image(image_format=mp.ImageFormat.SRGB, data=np.ascontiguousarray(rgb)))
         if res.face_blendshapes:
@@ -104,6 +108,7 @@ def process(job):
     va, va_valid, ex = pad(va, 0), pad(va_valid, 0), pad(ex, -1)
     feat = np.zeros((T, 52), np.float32); obs = np.zeros(T, np.float32)
     frames = frame_index(fdir)
+    has_img = sum(1 for i in range(T) if (i + 1) in frames)
     for i in range(T):
         p = frames.get(i + 1)                       # 第 i 行标注 ↔ 第 i+1 帧
         if p is None:
@@ -118,7 +123,7 @@ def process(job):
     np.savez_compressed(out_path + ".tmp.npz", feat_blend=feat, observed=obs, va=va, va_valid=va_valid,
                         expr=ex.astype(np.int8))
     os.replace(out_path + ".tmp.npz", out_path)
-    return name, split, T, int(obs.sum()), int(va_valid.sum()), int((ex >= 0).sum())
+    return name, split, T, has_img, int(obs.sum()), int(va_valid.sum()), int((ex >= 0).sum())
 
 
 def main():
@@ -170,10 +175,11 @@ def main():
 
     t0 = time.time(); done = 0
     with Pool(a.workers, initializer=_init, initargs=(a.model,)) as pool:
-        for n, sp, T, ob, nva, nex in pool.imap_unordered(process, jobs):
+        for n, sp, T, hi, ob, nva, nex in pool.imap_unordered(process, jobs):
             done += 1
             el = time.time() - t0
-            print(f"[{done}/{len(jobs)}] {sp:5s} {n}  帧 {T}  检测到脸 {ob/T:.0%}  VA {nva}  表情 {nex}  "
+            print(f"[{done}/{len(jobs)}] {sp:5s} {n}  帧 {T}  有图 {hi/T:.0%}  检测到脸 {ob/T:.0%}"
+                  f"（有图的帧里 {ob/max(hi,1):.0%}）  VA {nva}  表情 {nex}  "
                   f"（已用 {el/60:.0f} 分，预计还要 {el/done*(len(jobs)-done)/60:.0f} 分）", flush=True)
     print("完成：", a.out_root)
 
