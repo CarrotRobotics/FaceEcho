@@ -180,6 +180,14 @@
         <div class="hint" id="affHint" data-i18n-html="aff_needW"></div>
       </div>
     </div>
+    <details id="perfBox" style="margin-top:10px">
+      <summary class="status" style="cursor:pointer" data-i18n="perf_title"></summary>
+      <div style="display:flex;gap:8px;align-items:center;margin:8px 0;flex-wrap:wrap">
+        <button id="perfCsv" class="ghost" style="padding:5px 12px;font-size:12px" data-i18n="perf_csv"></button>
+        <button id="perfReset" class="ghost" style="padding:5px 12px;font-size:12px" data-i18n="perf_reset"></button>
+        <span class="status" style="font-size:12px" data-i18n="perf_note"></span></div>
+      <table id="perfTbl" style="font-size:12px;border-collapse:collapse;font-variant-numeric:tabular-nums"></table>
+    </details>
   </div>
 
   <div class="foot" data-i18n-html="foot"></div>
@@ -191,6 +199,7 @@ import { FaceLandmarker, FilesetResolver }
 import { SafeAffectEstimator, vaToMood } from "./js/affect_grud.js";
 import { initI18n, t, setLang, onLang, getLang, applyStatic } from "./js/i18n.js";
 import { CompanionVoice, clean } from "./js/voice.js";
+import { PerfLog, GAP_BINS } from "./js/perfstats.js";
 await initI18n(); applyStatic();
 const voice=new CompanionVoice();
 let lastStatus=['st_loading',{}];
@@ -284,7 +293,7 @@ function affectStep(m,t){                    // m = {categoryName:score} 或 nul
   if(!affEst)return null;
   let x=null;
   if(m){x=new Float32Array(affEst.D);affEst.names.forEach((n,j)=>{x[j]=m[n]||0;});}
-  const o=affEst.step(x,t);affLast=o;
+  const t0=performance.now();const o=affEst.step(x,t);perf.grud(performance.now()-t0,o);affLast=o;
   affHist.push({t,v:o.v,a:o.a,obs:o.observed});
   while(affHist.length&&affHist[0].t<t-AFF_WIN)affHist.shift();
   drawAffect();postAffect(o);
@@ -404,6 +413,28 @@ camSel.onchange=async()=>{
   cv.width=video.videoWidth||640;cv.height=video.videoHeight||480;running=true;loop();
   const trk=stream.getVideoTracks()[0];setStatus('st_switched',{l:trk?trk.label:''});
 };
+// ===== 性能统计（论文 E1/E2）=====
+const perf=new PerfLog();
+function renderPerf(){
+  const tb=$('perfTbl');if(!$('perfBox').open)return;
+  const s=perf.stats();if(!s){tb.innerHTML=`<tr><td class="status">${t('perf_empty')}</td></tr>`;return;}
+  const n=x=>Number.isFinite(x)?x.toFixed(1):'–',td='style="padding:2px 10px 2px 0"';
+  const row=(k,q)=>`<tr><td ${td}>${t(k)}</td><td ${td}>${n(q.p50)}</td><td ${td}>${n(q.p95)}</td><td ${td}>${n(q.max)}</td></tr>`;
+  const lab=['<0.2','0.2–0.5','0.5–1','1–2','≥2'];
+  tb.innerHTML=`<tr class="status"><td ${td}></td><td ${td}>p50 ms</td><td ${td}>p95 ms</td><td ${td}>max ms</td></tr>`
+    +row('perf_mp',s.mp)+row('perf_grud',s.grud)+row('perf_total',s.total)+row('perf_fdt',s.frame_dt)
+    +`<tr><td ${td}>${t('perf_fps')}</td><td ${td} colspan="3"><b>${n(s.fps)}</b> · ${t('perf_frames',{n:s.n,s:s.dur.toFixed(0)})}</td></tr>`
+    +`<tr><td ${td}>${t('perf_obs')}</td><td ${td} colspan="3"><b>${(100*s.obsRatio).toFixed(1)}%</b> · ${t('perf_runs',{n:s.runs,m:s.runMax.toFixed(2)})}</td></tr>`
+    +`<tr><td ${td}>${t('perf_hist')}</td><td ${td} colspan="3">${s.hist.map((c,i)=>lab[i]+' s: <b>'+c+'</b>').join(' · ')}</td></tr>`;
+}
+setInterval(renderPerf,1000);$('perfBox').addEventListener('toggle',renderPerf);onLang(renderPerf);
+$('perfReset').onclick=()=>{perf.reset();renderPerf();};
+$('perfCsv').onclick=()=>{
+  const b=new Blob([perf.csv()],{type:'text/csv'}),a=document.createElement('a');
+  const d=new Date(),z=x=>String(x).padStart(2,'0');
+  a.href=URL.createObjectURL(b);a.download=`faceecho_perf_${d.getFullYear()}${z(d.getMonth()+1)}${z(d.getDate())}_${z(d.getHours())}${z(d.getMinutes())}.csv`;
+  document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),1000);};
+
 stopBtn.onclick=()=>{running=false;if(affEst){affEst.reset();affHist.length=0;affLast=null;drawAffect();}startBtn.disabled=false;stopBtn.disabled=true;calBtn.disabled=true;
   if(stream)stream.getTracks().forEach(t=>t.stop());ctx.clearRect(0,0,cv.width,cv.height);voice.stop();setStatus('st_stopped');};
 videoBtn.onclick=()=>{video.classList.toggle('hide');renderButtons();};
@@ -413,7 +444,8 @@ let calState='none',calSamples=[],calEndTime=0,baseline=null;
 calBtn.onclick=()=>{calSamples=[];affCal=[];calState='collecting';calEndTime=performance.now()+3000;};
 
 function loop(){if(!running)return;
-  if(video.currentTime!==lastT){lastT=video.currentTime;const res=lm.detectForVideo(video,performance.now());process(res);}
+  if(video.currentTime!==lastT){lastT=video.currentTime;const t0=performance.now();perf.begin(t0);
+    const res=lm.detectForVideo(video,t0);perf.mp(performance.now()-t0);process(res);perf.end(performance.now(),reactBusy());}
   requestAnimationFrame(loop);}
 
 // ===== 几何 =====

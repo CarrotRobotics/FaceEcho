@@ -151,7 +151,21 @@
   "holdLabel": "⏱ 反応ロック",
   "sec": "秒",
   "aff_expr": "表情ヘッド：あり（7 クラスを学習、検証 macro-F1 {f}）。5 つの感情はモデルの表情出力から直接。",
-  "aff_noexpr": "表情ヘッド：なし（旧い重み）。5 つの感情は valence/arousal から換算。"
+  "aff_noexpr": "表情ヘッド：なし（旧い重み）。5 つの感情は valence/arousal から換算。",
+  "perf_title": "📊 性能統計（遅延・ドロップ率）",
+  "perf_csv": "CSV を書き出す",
+  "perf_reset": "リセット",
+  "perf_note": "開始から全フレームを記録（最大約 20 分）",
+  "perf_empty": "まだデータがありません。カメラを開始してください。",
+  "perf_mp": "MediaPipe 推論",
+  "perf_grud": "GRU-D 1 ステップ",
+  "perf_total": "1 フレーム処理合計",
+  "perf_fdt": "フレーム間隔",
+  "perf_fps": "処理 FPS",
+  "perf_frames": "{n} フレーム / {s} 秒",
+  "perf_obs": "顔が見えた割合",
+  "perf_runs": "ドロップ区間 {n} 回、最長 {m} 秒",
+  "perf_hist": "ドロップ区間の長さ"
  },
  "zh": {
   "title": "FaceEcho 脸回声 · 表情识别与虚拟形象",
@@ -305,7 +319,21 @@
   "holdLabel": "⏱ 反应锁定",
   "sec": "秒",
   "aff_expr": "表情头：有（学习了 7 类表情，验证集 macro-F1 {f}）。5 类情绪直接来自模型的表情输出。",
-  "aff_noexpr": "表情头：无（旧权重）。5 类情绪由 valence/arousal 换算。"
+  "aff_noexpr": "表情头：无（旧权重）。5 类情绪由 valence/arousal 换算。",
+  "perf_title": "📊 性能统计（延迟与丢帧率）",
+  "perf_csv": "导出 CSV",
+  "perf_reset": "清空",
+  "perf_note": "从开始起记录每一帧（最多约 20 分钟）",
+  "perf_empty": "还没有数据，请先开始摄像头。",
+  "perf_mp": "MediaPipe 推理",
+  "perf_grud": "GRU-D 单步",
+  "perf_total": "单帧处理合计",
+  "perf_fdt": "帧间隔",
+  "perf_fps": "处理帧率",
+  "perf_frames": "{n} 帧 / {s} 秒",
+  "perf_obs": "看到脸的比例",
+  "perf_runs": "丢帧片段 {n} 段，最长 {m} 秒",
+  "perf_hist": "丢帧片段长度"
  },
  "en": {
   "title": "FaceEcho · Facial Expression Recognition & Avatar",
@@ -459,6 +487,20 @@
   "holdLabel": "⏱ Reaction lock",
   "sec": "s",
   "aff_expr": "Expression head: yes (7 classes learned, validation macro-F1 {f}). The 5 emotions come straight from the model.",
-  "aff_noexpr": "Expression head: none (old weights). The 5 emotions are derived from valence/arousal."
+  "aff_noexpr": "Expression head: none (old weights). The 5 emotions are derived from valence/arousal.",
+  "perf_title": "📊 Performance (latency & drop rate)",
+  "perf_csv": "Export CSV",
+  "perf_reset": "Reset",
+  "perf_note": "Every frame since start is logged (up to ~20 min)",
+  "perf_empty": "No data yet. Start the camera first.",
+  "perf_mp": "MediaPipe inference",
+  "perf_grud": "GRU-D step",
+  "perf_total": "Total per frame",
+  "perf_fdt": "Frame interval",
+  "perf_fps": "Processing FPS",
+  "perf_frames": "{n} frames / {s} s",
+  "perf_obs": "Face visible",
+  "perf_runs": "{n} dropout runs, longest {m} s",
+  "perf_hist": "Dropout run length"
  }
 }
