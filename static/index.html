@@ -147,6 +147,10 @@
       <div class="status" style="margin:8px 4px 0" id="compHint" data-i18n="compHint"></div>
       <div style="display:flex;align-items:center;gap:8px;margin:8px 4px 0;flex-wrap:wrap">
         <button id="voiceBtn" class="ghost" style="padding:6px 12px;font-size:12px"></button>
+        <label class="chk" style="font-size:12px"><span data-i18n="holdLabel"></span>
+          <input id="holdIn" type="number" min="0" max="60" step="0.5" value="4"
+            style="width:52px;background:#171a2e;color:var(--text);border:1px solid rgba(255,255,255,.2);border-radius:6px;padding:3px 5px">
+          <span data-i18n="sec"></span></label>
         <span class="status" id="voiceInfo" style="font-size:12px"></span></div>
     </div>
   </div>
@@ -285,7 +289,8 @@ function postAffect(o){
   fetch('./api/affect',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({v:o.v,a:o.a,dist:o.dist,dist_raw:o.distRaw,observed:o.observed,gap_s:o.gap,
       mood:vaToMood(o.v,o.a),t_client:Date.now()/1000,
-      comp_mood:compShown||'neutral',say_id:compSay.id,say_line:compSay.line,say_lang:compSay.lang,say_text:compSay.text})})
+      comp_mood:compShown||'neutral',say_id:compSay.id,say_line:compSay.line,say_lang:compSay.lang,say_text:compSay.text,
+      react_busy:reactBusy(),react_left_s:Math.max(0,(reactUntil-performance.now())/1000)})})
     .catch(()=>{}).finally(()=>{affPostBusy=false;});
 }
 function drawAffect(){
@@ -788,6 +793,11 @@ const REACT={
   neutral: {react:'idle',    color:'#8fe6c0'},
 };  // 台词在 i18n.json 的 lines 里（日/中/英）
 let compEmo='neutral', compShown='', bubbleIdx=0, emoStableFrames=0, tHold=0;
+// 一次“反应”= 一句话 + 机器人随后的动作，是一个整体：锁定到这句话说完，并且至少持续“反应锁定”设定的秒数。
+// 锁定期间表情再怎么变也不换反应；解锁后直接回应当时最新的情绪。秒数在伙伴下方的输入框里改（会记住）。
+let reactUntil=0;
+const reactBusy=()=>voice.busy()||performance.now()<reactUntil;
+function holdSec(){const v=parseFloat($('holdIn').value);return isFinite(v)&&v>=0?Math.min(v,60):4;}
 let compTarget='idle', compCur={mouth:0,brow:0,eye:1}, compTime=0;
 
 function updateCompanion(top,conf){
@@ -795,7 +805,7 @@ function updateCompanion(top,conf){
   if(top===compEmo){emoStableFrames++;}
   else{compEmo=top;emoStableFrames=0;}
   // 正在说话时先把这句说完，不打断；说完后再回应最新的情绪（情绪稳定 6 帧以上就会触发）
-  if((emoStableFrames>=6 || compShown==='') && !voice.busy()){
+  if((emoStableFrames>=6 || compShown==='') && !reactBusy()){
     if(top!==compShown || compShown===''){
       compShown=top; const r=REACT[top];
       const lines=t('lines')[top];
@@ -803,6 +813,7 @@ function updateCompanion(top,conf){
       bubble.textContent=lines[bubbleIdx];
       voice.say(lines[bubbleIdx],`${top}_${bubbleIdx}`);
       compSay={id:compSay.id+1,line:`${top}_${bubbleIdx}`,lang:getLang(),text:clean(lines[bubbleIdx])};
+      reactUntil=performance.now()+holdSec()*1000;
       bubble.style.background='rgba(255,255,255,.06)';
       bubble.style.borderColor=r.color;
       bubble.style.color=r.color;
@@ -919,6 +930,10 @@ function renderAll(){
 }
 const voiceBtn=$('voiceBtn'), voiceInfo=$('voiceInfo');
 voiceBtn.onclick=()=>{voice.on=!voice.on;if(!voice.on)voice.stop();renderButtons();};
+// 反应锁定秒数：输入框 > 上次保存的值 > URL ?hold= > 4 秒
+{const hi=$('holdIn');let v=null;try{v=localStorage.getItem('faceecho.hold');}catch(e){}
+ const q=new URLSearchParams(location.search).get('hold');if(v===null&&q!==null)v=q;if(v!==null&&isFinite(parseFloat(v)))hi.value=v;
+ hi.onchange=()=>{hi.value=holdSec();try{localStorage.setItem('faceecho.hold',hi.value);}catch(e){}};}
 voice.onchange=renderVoiceInfo;
 document.querySelectorAll('#langsw button').forEach(b=>b.onclick=()=>setLang(b.dataset.lang));
 onLang(()=>{voice.stop();renderAll();});

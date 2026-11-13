@@ -37,7 +37,8 @@ def affect():
     if request.method == "POST":
         d = request.get_json(silent=True) or {}
         keep = {k: d[k] for k in ("v", "a", "dist", "dist_raw", "observed", "gap_s", "mood", "t_client",
-                                 "comp_mood", "say_id", "say_line", "say_lang", "say_text") if k in d}
+                                 "comp_mood", "say_id", "say_line", "say_lang", "say_text",
+                                 "react_busy", "react_left_s") if k in d}
         keep["t_server"] = time.time()
         with _affect_lock:
             _affect.clear(); _affect.update(keep)

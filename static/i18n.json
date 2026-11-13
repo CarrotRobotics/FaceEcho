@@ -147,7 +147,9 @@
     "今日はどんな一日だった？",
     "顔を動かしてみて、ちゃんと応えるよ"
    ]
-  }
+  },
+  "holdLabel": "⏱ 反応ロック",
+  "sec": "秒"
  },
  "zh": {
   "title": "FaceEcho 脸回声 · 表情识别与虚拟形象",
@@ -297,7 +299,9 @@
     "今天过得怎么样？",
     "随便动动脸，我会回应你"
    ]
-  }
+  },
+  "holdLabel": "⏱ 反应锁定",
+  "sec": "秒"
  },
  "en": {
   "title": "FaceEcho · Facial Expression Recognition & Avatar",
@@ -447,6 +451,8 @@
     "How's your day going?",
     "Move your face a little, and I'll respond."
    ]
-  }
+  },
+  "holdLabel": "⏱ Reaction lock",
+  "sec": "s"
  }
 }
