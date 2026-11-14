@@ -256,8 +256,8 @@ init();
 // 混合判断：开心/惊讶/平静仍来自 GRU-D；生气/伤心再加上几何特征（眉间下压 → 生气，嘴角下拉 → 伤心）
 let mixGeo=true;{let v=null;try{v=localStorage.getItem('faceecho.mix');}catch(e){}
   const q=new URLSearchParams(location.search).get('mix');if(q!==null)v=q;if(v!==null)mixGeo=v!=='0';}
-const geoAS={angry:0,sad:0}, geoSince={angry:null,sad:null};
-const GEO_HOLD_S=1.0;   // 几何特征要持续 1 秒才算（说话时一闪而过的动作不算）
+const geoAS={angry:0,sad:0,surprise:0}, geoSince={angry:null,sad:null,surprise:null};
+const GEO_HOLD={angry:1.0,sad:1.0,surprise:0.3};   // 惊讶本来就是一瞬间的，只要 0.3 秒
 let exprBase=null;  // 校准时记下的、你平静脸上 5 类表情的对数概率（表情按"相对你自己的平静脸"来判断）
 let affBase={v:0,a:0}, affCal=[];   // 校准中性脸时记下的 GRU-D 基准（每个人的自然脸不同）
 // ===== 情绪判断统一由 GRU-D（论文模型）给出 =====
@@ -310,7 +310,7 @@ function renderAff(){
     ((exprEst||affEst).exprClasses?'<br>'+t('aff_expr',{f:((((exprEst||affEst).meta||{}).val_drop0||{}).expr_f1??NaN).toFixed(2)}):'<br>'+t('aff_noexpr'))+'<br>'+t('aff_extrap');
 }
 driveBtn.onclick=()=>{mixGeo=!mixGeo;if(!mixGeo)$('geoDbg').style.display='none';try{localStorage.setItem('faceecho.mix',mixGeo?'1':'0');}catch(e){}
-  geoAS.angry=geoAS.sad=0;geoSince.angry=geoSince.sad=null;renderAff();compShown='';};
+  for(const k in geoAS){geoAS[k]=0;geoSince[k]=null;}renderAff();compShown='';};
 
 function affectStep(m,t){                    // m = {categoryName:score} 或 null(没看到脸)
   if(!affEst)return null;
@@ -511,7 +511,7 @@ function velocity(k){const h=hist[k];return h.length<3?0:h[h.length-1]-h[0];}
 // 生气：几何(眉间下压)为主；GRU-D 的“生气”要有皱眉支持才算（否则张嘴、嘴角下拉都会被它当成生气）。
 // 伤心：几何(嘴角下拉)与 GRU-D 取较大值；几何认出伤心时压低 GRU-D 的“生气”。
 function mixAngrySad(pr,d,pose){
-  let ga=0,gs=0;
+  let ga=0,gs=0,gu=0;
   const poseOk=Math.abs(pose.yaw)<0.6&&Math.abs(pose.roll)<0.6;
   const active=!!(baseline&&poseOk);
   if(active&&d.nSmile<0.35){
@@ -519,24 +519,28 @@ function mixAngrySad(pr,d,pose){
     gs=dz(Math.max(d.nFrown*1.8,d.nFurrow*0.4+d.nFrown*1.0)*gain);   // 嘴角下拉通常幅度小，伤心给更大增益
     ga=dz(d.nFurrow*1.5*gain);
     if(d.nFrown>0.3)ga*=0.5;                 // 嘴角明显下拉时优先算伤心
+    const open=clamp((d.nOpen-0.2)/0.4);     // 嘴张大时嘴角会被带着往下：这不是伤心，是惊讶
+    gs*=1-open;
+    gu=dz(d.nOpen*1.25*gain);
   }
   const now=performance.now()/1000;
-  for(const[k,g]of[['angry',ga],['sad',gs]]){
+  for(const[k,g]of[['angry',ga],['sad',gs],['surprise',gu]]){
     if(g>0.3){if(geoSince[k]===null)geoSince[k]=now;}else geoSince[k]=null;
-    const held=geoSince[k]!==null&&now-geoSince[k]>=GEO_HOLD_S;
+    const held=geoSince[k]!==null&&now-geoSince[k]>=GEO_HOLD[k];
     geoAS[k]=lerp(geoAS[k],held?g:0,0.15);
   }
   const p={...pr};
   if(active){
     const gate=0.2+0.8*clamp(ga/0.5);            // 没有皱眉 → GRU-D 的“生气”只留 20%
     p.angry=Math.max(pr.angry*gate*(1-geoAS.sad),geoAS.angry);
-    p.sad=Math.max(pr.sad,geoAS.sad);
+    p.sad=Math.max(pr.sad*(1-geoAS.surprise),geoAS.sad);   // 嘴张大(惊讶)时 GRU-D 的“伤心”也打折
+    p.surprise=Math.max(pr.surprise,geoAS.surprise);
   }
-  p.neutral*=1-Math.max(geoAS.angry,geoAS.sad);   // 几何确认了生气/伤心，就相应压低平静，避免两条进度条差不多
+  p.neutral*=1-Math.max(geoAS.angry,geoAS.sad,geoAS.surprise);   // 几何确认了生气/伤心，就相应压低平静，避免两条进度条差不多
   const g=$('geoDbg');g.style.display='';
-  g.textContent=t('geo_dbg',{a:Math.round(ga*100),s:Math.round(gs*100),
-    ha:geoSince.angry===null?0:Math.min(GEO_HOLD_S,now-geoSince.angry).toFixed(1),
-    hs:geoSince.sad===null?0:Math.min(GEO_HOLD_S,now-geoSince.sad).toFixed(1)});
+  const hd=k=>geoSince[k]===null?0:Math.min(GEO_HOLD[k],now-geoSince[k]).toFixed(1);
+  g.textContent=active?t('geo_dbg',{a:Math.round(ga*100),s:Math.round(gs*100),u:Math.round(gu*100),
+    ha:hd('angry'),hs:hd('sad'),hu:hd('surprise')}):t(baseline?'geo_pose':'geo_nocal');
   return norm(p);
 }
 // 几何概率
