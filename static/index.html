@@ -152,6 +152,10 @@
           <input id="holdIn" type="number" min="0" max="60" step="0.5" value="4"
             style="width:52px;background:#171a2e;color:var(--text);border:1px solid rgba(255,255,255,.2);border-radius:6px;padding:3px 5px">
           <span data-i18n="sec"></span></label>
+        <label class="chk" style="font-size:12px"><span data-i18n="geoHoldLabel"></span>
+          <input id="geoHoldIn" type="number" min="0" max="3" step="0.1" value="0.5"
+            style="width:52px;background:#171a2e;color:var(--text);border:1px solid rgba(255,255,255,.2);border-radius:6px;padding:3px 5px">
+          <span data-i18n="sec"></span></label>
         <label class="chk" style="font-size:12px"><span data-i18n="sensLabel"></span>
           <input id="sensIn" type="number" min="1" max="5" step="1" value="3"
             style="width:42px;background:#171a2e;color:var(--text);border:1px solid rgba(255,255,255,.2);border-radius:6px;padding:3px 5px"></label>
@@ -257,7 +261,8 @@ init();
 let mixGeo=true;{let v=null;try{v=localStorage.getItem('faceecho.mix');}catch(e){}
   const q=new URLSearchParams(location.search).get('mix');if(q!==null)v=q;if(v!==null)mixGeo=v!=='0';}
 const geoAS={angry:0,sad:0,surprise:0}, geoSince={angry:null,sad:null,surprise:null};
-const GEO_HOLD={angry:1.0,sad:1.0,surprise:1.0};   // 三类都要持续 1 秒才算
+// 几何表情要持续多久才算（秒）：网页上的「表情保持」输入框，默认 0.5 秒
+function geoHoldSec(){const v=parseFloat($('geoHoldIn').value);return isFinite(v)&&v>=0?Math.min(v,3):0.5;}
 let exprBase=null;  // 校准时记下的、你平静脸上 5 类表情的对数概率（表情按"相对你自己的平静脸"来判断）
 let affBase={v:0,a:0}, affCal=[];   // 校准中性脸时记下的 GRU-D 基准（每个人的自然脸不同）
 // ===== 情绪判断统一由 GRU-D（论文模型）给出 =====
@@ -526,7 +531,7 @@ function mixAngrySad(pr,d,pose){
   const now=performance.now()/1000;
   for(const[k,g]of[['angry',ga],['sad',gs],['surprise',gu]]){
     if(g>0.3){if(geoSince[k]===null)geoSince[k]=now;}else geoSince[k]=null;
-    const held=geoSince[k]!==null&&now-geoSince[k]>=GEO_HOLD[k];
+    const held=geoSince[k]!==null&&now-geoSince[k]>=geoHoldSec();
     geoAS[k]=lerp(geoAS[k],held?g:0,0.15);
   }
   const p={...pr};
@@ -541,7 +546,7 @@ function mixAngrySad(pr,d,pose){
   // 再整体“锐化”一次：哪类本来就多，就更突出，其余进度条自动变小
   for(const j in p)p[j]=Math.pow(Math.max(p[j],0),1.8);   // 几何确认了生气/伤心，就相应压低平静，避免两条进度条差不多
   const g=$('geoDbg');g.style.display='';
-  const hd=k=>geoSince[k]===null?0:Math.min(GEO_HOLD[k],now-geoSince[k]).toFixed(1);
+  const hd=k=>geoSince[k]===null?0:Math.min(geoHoldSec(),now-geoSince[k]).toFixed(1);
   g.textContent=active?t('geo_dbg',{a:Math.round(ga*100),s:Math.round(gs*100),u:Math.round(gu*100),
     ha:hd('angry'),hs:hd('sad'),hu:hd('surprise')}):t(baseline?'geo_pose':'geo_nocal');
   return norm(p);
@@ -1046,6 +1051,10 @@ voiceBtn.onclick=()=>{voice.on=!voice.on;if(!voice.on)voice.stop();renderButtons
 {const hi=$('holdIn');let v=null;try{v=localStorage.getItem('faceecho.hold');}catch(e){}
  const q=new URLSearchParams(location.search).get('hold');if(v===null&&q!==null)v=q;if(v!==null&&isFinite(parseFloat(v)))hi.value=v;
  hi.onchange=()=>{hi.value=holdSec();try{localStorage.setItem('faceecho.hold',hi.value);}catch(e){}};}
+// 表情保持秒数：输入框 > 上次保存的值 > URL ?geohold= > 0.5 秒
+{const gi=$('geoHoldIn');let v=null;try{v=localStorage.getItem('faceecho.geohold');}catch(e){}
+ const q=new URLSearchParams(location.search).get('geohold');if(v===null&&q!==null)v=q;if(v!==null&&isFinite(parseFloat(v)))gi.value=v;
+ gi.onchange=()=>{gi.value=geoHoldSec();try{localStorage.setItem('faceecho.geohold',gi.value);}catch(e){}};}
 // 表情灵敏度：输入框 > 上次保存的值 > URL ?sens= > 3
 {const si=$('sensIn');let v=null;try{v=localStorage.getItem('faceecho.sens');}catch(e){}
  const q=new URLSearchParams(location.search).get('sens');if(v===null&&q!==null)v=q;if(v!==null&&parseInt(v)>=1&&parseInt(v)<=5)si.value=parseInt(v);
