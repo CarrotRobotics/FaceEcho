@@ -132,6 +132,7 @@
         <div class="status" id="moodHint" data-i18n="afterCam"></div></div>
       </div>
       <div class="bars" id="bars"></div>
+      <div class="status" id="geoDbg" style="font-size:12px;margin:4px 2px 0;display:none"></div>
       <div class="fuse">
         <div class="row"><span data-i18n="fuseW"></span><span id="wlabel"></span></div>
         <input id="wslider" type="range" min="0" max="100" value="50">
@@ -308,7 +309,7 @@ function renderAff(){
     (v&&v.ccc_v!==undefined?'<br>'+t('aff_val',{v:v.ccc_v.toFixed(2),ar:v.ccc_a.toFixed(2),d:(v.danger_viol*100).toFixed(1)}):'')+
     ((exprEst||affEst).exprClasses?'<br>'+t('aff_expr',{f:((((exprEst||affEst).meta||{}).val_drop0||{}).expr_f1??NaN).toFixed(2)}):'<br>'+t('aff_noexpr'))+'<br>'+t('aff_extrap');
 }
-driveBtn.onclick=()=>{mixGeo=!mixGeo;try{localStorage.setItem('faceecho.mix',mixGeo?'1':'0');}catch(e){}
+driveBtn.onclick=()=>{mixGeo=!mixGeo;if(!mixGeo)$('geoDbg').style.display='none';try{localStorage.setItem('faceecho.mix',mixGeo?'1':'0');}catch(e){}
   geoAS.angry=geoAS.sad=0;geoSince.angry=geoSince.sad=null;renderAff();compShown='';};
 
 function affectStep(m,t){                    // m = {categoryName:score} 或 null(没看到脸)
@@ -511,7 +512,7 @@ function mixAngrySad(pr,d,extreme){
   let ga=0,gs=0;
   if(baseline&&!extreme&&d.nSmile<0.35){
     const gain=0.6+0.2*sensLevel(), dz=x=>clamp((x-0.15)/0.85);   // 灵敏度 3 → ×1.2；0.15 以下当噪声
-    gs=dz(Math.max(d.nFrown*1.3,d.nFurrow*0.4+d.nFrown*0.7)*gain);
+    gs=dz(Math.max(d.nFrown*1.8,d.nFurrow*0.4+d.nFrown*1.0)*gain);   // 嘴角下拉通常幅度小，伤心给更大增益
     ga=dz(d.nFurrow*1.5*gain);
     if(d.nFrown>0.3)ga*=0.5;                 // 嘴角明显下拉时优先算伤心
   }
@@ -522,6 +523,11 @@ function mixAngrySad(pr,d,extreme){
     geoAS[k]=lerp(geoAS[k],held?g:0,0.15);
   }
   const p={...pr};p.angry=Math.max(p.angry,geoAS.angry);p.sad=Math.max(p.sad,geoAS.sad);
+  p.neutral*=1-Math.max(geoAS.angry,geoAS.sad);   // 几何确认了生气/伤心，就相应压低平静，避免两条进度条差不多
+  const g=$('geoDbg');g.style.display='';
+  g.textContent=t('geo_dbg',{a:Math.round(ga*100),s:Math.round(gs*100),
+    ha:geoSince.angry===null?0:Math.min(GEO_HOLD_S,now-geoSince.angry).toFixed(1),
+    hs:geoSince.sad===null?0:Math.min(GEO_HOLD_S,now-geoSince.sad).toFixed(1)});
   return norm(p);
 }
 // 几何概率
