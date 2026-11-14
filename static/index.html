@@ -257,7 +257,7 @@ init();
 let mixGeo=true;{let v=null;try{v=localStorage.getItem('faceecho.mix');}catch(e){}
   const q=new URLSearchParams(location.search).get('mix');if(q!==null)v=q;if(v!==null)mixGeo=v!=='0';}
 const geoAS={angry:0,sad:0,surprise:0}, geoSince={angry:null,sad:null,surprise:null};
-const GEO_HOLD={angry:1.0,sad:1.0,surprise:0.3};   // 惊讶本来就是一瞬间的，只要 0.3 秒
+const GEO_HOLD={angry:1.0,sad:1.0,surprise:1.0};   // 三类都要持续 1 秒才算
 let exprBase=null;  // 校准时记下的、你平静脸上 5 类表情的对数概率（表情按"相对你自己的平静脸"来判断）
 let affBase={v:0,a:0}, affCal=[];   // 校准中性脸时记下的 GRU-D 基准（每个人的自然脸不同）
 // ===== 情绪判断统一由 GRU-D（论文模型）给出 =====
@@ -536,7 +536,10 @@ function mixAngrySad(pr,d,pose){
     p.sad=Math.max(pr.sad*(1-geoAS.surprise),geoAS.sad);   // 嘴张大(惊讶)时 GRU-D 的“伤心”也打折
     p.surprise=Math.max(pr.surprise,geoAS.surprise);
   }
-  p.neutral*=1-Math.max(geoAS.angry,geoAS.sad,geoAS.surprise);   // 几何确认了生气/伤心，就相应压低平静，避免两条进度条差不多
+  // 几何确认了某个表情 → 其余各类（含平静）都按它的强度压低，让占主导的那条明显领先
+  for(const k of ['angry','sad','surprise']){const gk=geoAS[k];if(gk>0)for(const j in p)if(j!==k)p[j]*=1-0.9*gk;}
+  // 再整体“锐化”一次：哪类本来就多，就更突出，其余进度条自动变小
+  for(const j in p)p[j]=Math.pow(Math.max(p[j],0),1.8);   // 几何确认了生气/伤心，就相应压低平静，避免两条进度条差不多
   const g=$('geoDbg');g.style.display='';
   const hd=k=>geoSince[k]===null?0:Math.min(GEO_HOLD[k],now-geoSince[k]).toFixed(1);
   g.textContent=active?t('geo_dbg',{a:Math.round(ga*100),s:Math.round(gs*100),u:Math.round(gu*100),
