@@ -149,6 +149,7 @@
    ]
   },
   "holdLabel": "⏱ 反応ロック",
+  "sensLabel": "🎚 表情の感度",
   "sec": "秒",
   "aff_expr": "表情ヘッド：あり（7 クラスを学習、検証 macro-F1 {f}）。5 つの感情はモデルの表情出力から直接。",
   "aff_noexpr": "表情ヘッド：なし（旧い重み）。5 つの感情は valence/arousal から換算。",
@@ -317,6 +318,7 @@
    ]
   },
   "holdLabel": "⏱ 反应锁定",
+  "sensLabel": "🎚 表情灵敏度",
   "sec": "秒",
   "aff_expr": "表情头：有（学习了 7 类表情，验证集 macro-F1 {f}）。5 类情绪直接来自模型的表情输出。",
   "aff_noexpr": "表情头：无（旧权重）。5 类情绪由 valence/arousal 换算。",
@@ -485,6 +487,7 @@
    ]
   },
   "holdLabel": "⏱ Reaction lock",
+  "sensLabel": "🎚 Expression sensitivity",
   "sec": "s",
   "aff_expr": "Expression head: yes (7 classes learned, validation macro-F1 {f}). The 5 emotions come straight from the model.",
   "aff_noexpr": "Expression head: none (old weights). The 5 emotions are derived from valence/arousal.",
