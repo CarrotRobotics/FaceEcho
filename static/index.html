@@ -506,11 +506,15 @@ const hist={eyeOpen:[],mouthOpen:[]};
 function pushHist(f){for(const k of ['eyeOpen','mouthOpen']){hist[k].push(f[k]);if(hist[k].length>8)hist[k].shift();}}
 function velocity(k){const h=hist[k];return h.length<3?0:h[h.length-1]-h[0];}
 
-// 混合判断：几何特征只用于生气、伤心；需要已校准、姿态不过大、没在笑。
-// 用 max 合并（不是加权平均）：GRU-D 自己认出生气/伤心时照样有效，几何特征只负责“补上它漏掉的”。
-function mixAngrySad(pr,d,extreme){
+// 混合判断：几何特征只用于生气、伤心；需要已校准、没有大幅侧脸/歪头、没在笑。
+// 俯仰角（低头/摄像头偏高）不挡：校准是在同样的角度下做的，相对变化仍然可靠。
+// 生气：几何(眉间下压)为主；GRU-D 的“生气”要有皱眉支持才算（否则张嘴、嘴角下拉都会被它当成生气）。
+// 伤心：几何(嘴角下拉)与 GRU-D 取较大值；几何认出伤心时压低 GRU-D 的“生气”。
+function mixAngrySad(pr,d,pose){
   let ga=0,gs=0;
-  if(baseline&&!extreme&&d.nSmile<0.35){
+  const poseOk=Math.abs(pose.yaw)<0.6&&Math.abs(pose.roll)<0.6;
+  const active=!!(baseline&&poseOk);
+  if(active&&d.nSmile<0.35){
     const gain=0.6+0.2*sensLevel(), dz=x=>clamp((x-0.15)/0.85);   // 灵敏度 3 → ×1.2；0.15 以下当噪声
     gs=dz(Math.max(d.nFrown*1.8,d.nFurrow*0.4+d.nFrown*1.0)*gain);   // 嘴角下拉通常幅度小，伤心给更大增益
     ga=dz(d.nFurrow*1.5*gain);
@@ -522,7 +526,12 @@ function mixAngrySad(pr,d,extreme){
     const held=geoSince[k]!==null&&now-geoSince[k]>=GEO_HOLD_S;
     geoAS[k]=lerp(geoAS[k],held?g:0,0.15);
   }
-  const p={...pr};p.angry=Math.max(p.angry,geoAS.angry);p.sad=Math.max(p.sad,geoAS.sad);
+  const p={...pr};
+  if(active){
+    const gate=0.2+0.8*clamp(ga/0.5);            // 没有皱眉 → GRU-D 的“生气”只留 20%
+    p.angry=Math.max(pr.angry*gate*(1-geoAS.sad),geoAS.angry);
+    p.sad=Math.max(pr.sad,geoAS.sad);
+  }
   p.neutral*=1-Math.max(geoAS.angry,geoAS.sad);   // 几何确认了生气/伤心，就相应压低平静，避免两条进度条差不多
   const g=$('geoDbg');g.style.display='';
   g.textContent=t('geo_dbg',{a:Math.round(ga*100),s:Math.round(gs*100),
@@ -604,7 +613,7 @@ function process(res){
 
   // ===== 情绪来源：GRU-D（论文模型，默认）或旧的“几何 + Blendshape”规则融合 =====
   const useGRUD=!!(aff&&driveByVA);
-  if(useGRUD){let pr=affProbs(aff);if(mixGeo)pr=mixAngrySad(pr,dbg,extreme);
+  if(useGRUD){let pr=affProbs(aff);if(mixGeo)pr=mixAngrySad(pr,dbg,pose);
     for(const k in sm)sm[k]=lerp(sm[k],pr[k],0.5);}   // GRU-D 本身是时序平滑的，只轻微平滑
   else{
     let fused={};for(const k of keys)fused[k]=wGeo*geo.sc[k]+(1-wGeo)*bs[k];
@@ -620,7 +629,7 @@ function process(res){
   moodHint.textContent=(baseline?'':t('uncal'))+t('conf',{p:Math.round(tv*100)});
   for(const k of keys){const v=Math.round(sm[k]*100);barF[k].f.style.width=v+'%';barF[k].v.textContent=v+'%';}
 
-  const mk=[[t('m_smile'),dbg.nSmile],[t('m_open'),dbg.nOpen],[t('m_brow'),dbg.nBrowUp],
+  const mk=[[t('m_smile'),dbg.nSmile],[t('m_frown'),dbg.nFrown],[t('m_open'),dbg.nOpen],[t('m_brow'),dbg.nBrowUp],
     [t('m_furrow'),dbg.nFurrow],[t('m_eyewide'),dbg.nEyeWide],[t('m_sudden'),dbg.dynSurprise]];
   const html=mk.map(([n,v])=>`<div>${n} <b>${Math.round(v*100)}%</b></div>`).join('');
   if(html!==prevMetric){metricsEl.innerHTML=html;prevMetric=html;}
