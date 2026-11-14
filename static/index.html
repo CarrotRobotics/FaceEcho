@@ -516,8 +516,8 @@ function mixAngrySad(pr,d,pose){
   const active=!!(baseline&&poseOk);
   if(active&&d.nSmile<0.35){
     const gain=0.6+0.2*sensLevel(), dz=x=>clamp((x-0.15)/0.85);   // 灵敏度 3 → ×1.2；0.15 以下当噪声
-    gs=dz(Math.max(d.nFrown*1.8,d.nFurrow*0.4+d.nFrown*1.0)*gain);   // 嘴角下拉通常幅度小，伤心给更大增益
-    ga=dz(d.nFurrow*1.5*gain);
+    gs=dz(Math.max(d.nFrown*1.8,d.nFurrowAll*0.4+d.nFrown*1.0)*gain);   // 嘴角下拉通常幅度小，伤心给更大增益
+    ga=dz(d.nFurrowAll*1.5*gain);
     if(d.nFrown>0.3)ga*=0.5;                 // 嘴角明显下拉时优先算伤心
     const open=clamp((d.nOpen-0.2)/0.4);     // 嘴张大时嘴角会被带着往下：这不是伤心，是惊讶
     gs*=1-open;
@@ -555,6 +555,9 @@ function classifyGeo(f){
   const nFurrow=B?clamp((B.innerBrowGap-f.innerBrowGap)/0.05):clamp((0.34-f.innerBrowGap)/0.06);
   const nEyeWide=B?rel(f.eyeOpen,'eyeOpen',0.03):clamp((f.eyeOpen-0.045)/0.03);
   const nFrown=B?clamp((B.smileLift-f.smileLift-0.01)/0.03):clamp((-f.smileLift-0.005)/0.03);
+  // 皱眉 = 眉间变窄 或 眉毛下压（两种量法取大的；低头时眉间距离变化小，压眉更可靠）
+  const nBrowDown=B&&B.browDown!==undefined?clamp((f.browDown-B.browDown)/0.25):0;
+  const nFurrowAll=Math.max(nFurrow,nBrowDown);
   const vEye=Math.max(0,velocity('eyeOpen'))*30,vMouth=Math.max(0,velocity('mouthOpen'))*25;
   const dynSurprise=clamp(Math.max(vEye,vMouth));
   let sc={happy:nSmile*1.4,
@@ -564,7 +567,7 @@ function classifyGeo(f){
   // 平静 = 残差：只有当所有表情都很弱时才高
   const maxE=Math.max(sc.happy,sc.surprise,sc.sad,sc.angry);
   sc.neutral=Math.max(0.05,0.55-maxE*1.1);
-  return {sc:norm(sc),dbg:{nSmile,nOpen,nBrowUp,nFurrow,nEyeWide,nFrown,dynSurprise}};
+  return {sc:norm(sc),dbg:{nSmile,nOpen,nBrowUp,nFurrow,nFurrowAll,nBrowDown,nEyeWide,nFrown,dynSurprise}};
 }
 // blendshape 概率
 function classifyBS(m){
@@ -601,13 +604,14 @@ function process(res){
 
   // blendshape map
   const m={};if(res.faceBlendshapes&&res.faceBlendshapes[0])for(const c of res.faceBlendshapes[0].categories)m[c.categoryName]=c.score;
+  f.browDown=((m.browDownLeft||0)+(m.browDownRight||0))/2;   // MediaPipe 的“压眉”，和眉间距离一起判断皱眉
   const aff=affectStep(Object.keys(m).length?m:null,tNow);
 
   if(calState==='collecting'){
     calSamples.push(f);if(aff)affCal.push(aff);const remain=Math.max(0,(calEndTime-performance.now())/1000);
     banner.style.display='block';banner.textContent=t('calibrating',{s:remain.toFixed(1),n:calSamples.length});
     if(performance.now()>=calEndTime){baseline={};
-      for(const k of ['smileLift','mouthOpen','mouthW','browGap','innerBrowGap','eyeOpen'])
+      for(const k of ['smileLift','mouthOpen','mouthW','browGap','innerBrowGap','eyeOpen','browDown'])
         baseline[k]=calSamples.reduce((s,x)=>s+x[k],0)/calSamples.length;
       if(affCal.length){affBase={v:affCal.reduce((s,x)=>s+x.v,0)/affCal.length,a:affCal.reduce((s,x)=>s+x.a,0)/affCal.length};
         const ex=affCal.filter(x=>x.expr);
@@ -637,7 +641,7 @@ function process(res){
   for(const k of keys){const v=Math.round(sm[k]*100);barF[k].f.style.width=v+'%';barF[k].v.textContent=v+'%';}
 
   const mk=[[t('m_smile'),dbg.nSmile],[t('m_frown'),dbg.nFrown],[t('m_open'),dbg.nOpen],[t('m_brow'),dbg.nBrowUp],
-    [t('m_furrow'),dbg.nFurrow],[t('m_eyewide'),dbg.nEyeWide],[t('m_sudden'),dbg.dynSurprise]];
+    [t('m_furrow'),dbg.nFurrowAll],[t('m_eyewide'),dbg.nEyeWide],[t('m_sudden'),dbg.dynSurprise]];
   const html=mk.map(([n,v])=>`<div>${n} <b>${Math.round(v*100)}%</b></div>`).join('');
   if(html!==prevMetric){metricsEl.innerHTML=html;prevMetric=html;}
   const deg=r=>Math.round(r*180/Math.PI);
