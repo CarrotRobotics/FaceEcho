@@ -110,10 +110,40 @@ class Clips(Dataset):
         return cnt
 
 
-def make_collate(rate, fps):
+class EvalWindows(Dataset):
+    """验证用：每个视频按顺序切成不重叠的窗口（不随机），整段都评测，结果可复现。"""
+    def __init__(self, clips, win=512):
+        self.w = []
+        for feat, va, vv, ex, ob in clips.items:
+            for s in range(0, len(feat), win):
+                if len(feat) - s >= 16:
+                    sl = slice(s, s + win); self.w.append((feat[sl], va[sl], vv[sl], ex[sl], ob[sl]))
+    def __len__(self): return len(self.w)
+    def __getitem__(self, i): return self.w[i]
+
+
+def pad_batch(batch):
+    """不同长度的窗口补齐到同一长度（补的部分 observed=0、无标签，不参与评测）。"""
+    L = max(len(b[0]) for b in batch); out = []
+    for feat, va, vv, ex, ob in batch:
+        n = L - len(feat)
+        if n:
+            feat = np.concatenate([feat, np.zeros((n, feat.shape[1]), feat.dtype)]); va = np.concatenate([va, np.zeros((n, 2), va.dtype)])
+            vv = np.concatenate([vv, np.zeros(n, vv.dtype)]); ex = np.concatenate([ex, np.full(n, -1, ex.dtype)])
+            ob = np.concatenate([ob, np.zeros(n, ob.dtype)])
+        out.append((feat, va, vv, ex, ob))
+    return out
+
+
+def make_collate(rate, fps, seed=None):
     """丢帧协议（与论文相同）叠加数据里本来就没检测到脸的帧：mask = 观测到 且 没被丢。"""
+    cnt = [0]
     def collate(batch):
-        rng = np.random.RandomState(np.random.randint(1 << 30))
+        if seed is None:
+            rng = np.random.RandomState(np.random.randint(1 << 30))
+        else:                                   # 评测：固定随机数，每次评测丢的是同一批帧
+            rng = np.random.RandomState(seed + cnt[0]); cnt[0] += 1
+            batch = pad_batch(batch)
         F, V, VV, E, M, DT, DL = [], [], [], [], [], [], []
         for feat, va, vv, ex, ob in batch:
             T = len(feat); d = np.full(T, 1.0 / fps, np.float32)
@@ -157,12 +187,15 @@ NAMES5 = ["happy", "surprise", "sad", "angry", "neutral"]
 
 
 @torch.no_grad()
-def evaluate(model, ds, fps, drop, dev, batch=16):
+def evaluate(model, ds, fps, drop, dev, batch=64, bias=None, want_logits=False):
     model.eval()
-    P, G, EP, EG = [], [], [], []
-    for F, V, VV, E, M, DT, DL in DataLoader(ds, batch, shuffle=False, collate_fn=make_collate(drop, fps)):
-        va, ex = model(F.to(dev), DT.to(dev), M.to(dev), DL.to(dev))
-        va, ex = va.cpu().numpy(), ex.argmax(-1).cpu().numpy()
+    P, G, EP, EG, LG = [], [], [], [], []
+    for F, V, VV, E, M, DT, DL in DataLoader(ds, batch, shuffle=False, collate_fn=make_collate(drop, fps, seed=1234)):
+        va, lg = model(F.to(dev), DT.to(dev), M.to(dev), DL.to(dev))
+        va, lg = va.cpu().numpy(), lg.cpu().numpy()
+        if bias is not None: lg = lg + bias
+        ex = lg.argmax(-1)
+        if want_logits: LG.append(lg[E.numpy() >= 0])
         sel = VV.numpy() > 0.5
         if drop > 0: sel &= M.numpy() < 0.5
         P.append(va[sel]); G.append(V.numpy()[sel])
@@ -184,7 +217,23 @@ def evaluate(model, ds, fps, drop, dev, batch=16):
         out.update(expr_f1=float(f7.mean()), expr_acc=float((EP == EG).mean()),
                    expr_f1_per_class={k: round(float(v), 3) for k, v in zip(EXPR_CLASSES, f7)},
                    expr5_f1=float(f5.mean()), expr5_f1_per_class={k: round(float(v), 3) for k, v in zip(NAMES5, f5)})
+    if want_logits:
+        return out, (np.concatenate(LG) if LG else None), (EG if len(EG) else None)
     return out
+
+
+def calibrate_bias(logits, labels, rounds=3, grid=np.linspace(-3, 3, 31)):
+    """给表情头的 7 个输出各加一个偏置，让网页 5 类的 macro-F1 最大（逐类坐标搜索）。
+    只改 expr_head.bias，不改主干和 VA 头。注意：在验证集上调，验证集上的分数会偏乐观。"""
+    m = np.vectorize(MERGE5.get); g5 = m(labels)
+    score = lambda b: f1_scores(m((logits + b).argmax(-1)), g5, 5).mean()
+    b = np.zeros(N_EXPR, np.float32); best = score(b)
+    for _ in range(rounds):
+        for k in range(1, N_EXPR):                 # neutral 固定为 0 作参照
+            for v in grid:
+                c = b.copy(); c[k] = v; s = score(c)
+                if s > best + 1e-6: best, b = s, c
+    return b, best
 
 
 def export_json(model, path, meta):
@@ -217,8 +266,10 @@ def main():
     ap.add_argument("--units", type=int, default=64)
     ap.add_argument("--epochs", type=int, default=40)
     ap.add_argument("--lr", type=float, default=3e-3)
-    ap.add_argument("--seq_len", type=int, default=128)
-    ap.add_argument("--crops", type=int, default=4, help="每个视频每轮随机截几段")
+    ap.add_argument("--seq_len", type=int, default=256)
+    ap.add_argument("--crops", type=int, default=12, help="每个视频每轮随机截几段")
+    ap.add_argument("--eval_every", type=int, default=2)
+    ap.add_argument("--no_calib", action="store_true", help="不做表情偏置校准")
     ap.add_argument("--batch", type=int, default=32)
     ap.add_argument("--fps", type=float, default=30.0)
     ap.add_argument("--train_drop", type=float, default=0.35)
@@ -228,7 +279,8 @@ def main():
     torch.manual_seed(a.seed); np.random.seed(a.seed)
     dev = "cuda" if torch.cuda.is_available() else "cpu"
     tr = Clips(a.data_root, "train", a.seq_len, a.crops)
-    va = Clips(a.data_root, "val", a.seq_len, 1)
+    va = EvalWindows(Clips(a.data_root, "val", a.seq_len, 1))
+    print(f"[val] 评测窗口 {len(va)} 个（整段顺序切分，固定丢帧随机数）")
     model = GRUD_MT(52, a.units).to(dev)
     model.set_mean(np.concatenate([c[0][c[4] > 0.5] for c in tr.items]).mean(0))
 
@@ -241,7 +293,7 @@ def main():
                         num_workers=4, persistent_workers=True)
     opt = torch.optim.Adam(model.parameters(), a.lr)
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, a.epochs)
-    best, best_state, t0 = -1, None, time.time()
+    best, best_state, best_ep, t0 = -1, None, 0, time.time()
     for ep in range(a.epochs):
         model.train(); tot = [0.0, 0.0]
         for F, V, VV, E, M, DT, DL in loader:
@@ -254,20 +306,35 @@ def main():
             nn.utils.clip_grad_norm_(model.parameters(), 5.0); opt.step()
             tot[0] += l_va.item(); tot[1] += l_ex.item()
         sched.step()
-        if ep == 0 or (ep + 1) % 5 == 0 or ep == a.epochs - 1:
-            r = evaluate(model, va, a.fps, 0.0, dev, a.batch)
-            score = r.get("expr_f1", 0) + r.get("ccc_v", 0) + r.get("ccc_a", 0)
+        if ep == 0 or (ep + 1) % a.eval_every == 0 or ep == a.epochs - 1:
+            r = evaluate(model, va, a.fps, 0.0, dev)
+            score = r.get("expr5_f1", 0) + r.get("ccc_v", 0) + r.get("ccc_a", 0)
+            mark = ""
             if score > best:
-                best = score; best_state = {k: v.detach().clone() for k, v in model.state_dict().items()}
+                best = score; best_ep = ep + 1; mark = "  ★"
+                best_state = {k: v.detach().clone() for k, v in model.state_dict().items()}
             print(f"  epoch {ep+1:3d}/{a.epochs}  loss VA {tot[0]/len(loader):.4f}  EXPR {tot[1]/len(loader):.4f}  "
-                  f"| val CCC v/a {r.get('ccc_v',0):.3f}/{r.get('ccc_a',0):.3f}  表情F1 {r.get('expr_f1',0):.3f}  ({time.time()-t0:.0f}s)")
+                  f"| val CCC v/a {r.get('ccc_v',0):.3f}/{r.get('ccc_a',0):.3f}  表情F1 7类 {r.get('expr_f1',0):.3f} "
+                  f"5类 {r.get('expr5_f1',0):.3f}  ({time.time()-t0:.0f}s){mark}", flush=True)
     model.load_state_dict(best_state)
+    print(f"\n[选用] 第 {best_ep} 轮（验证集 5类F1 + CCC_v + CCC_a 最高）")
+
+    bias = None
+    if not a.no_calib:
+        r0, lg, lab = evaluate(model, va, a.fps, 0.0, dev, want_logits=True)
+        if lg is not None:
+            bias, f5 = calibrate_bias(lg, lab)
+            print(f"[校准] 表情偏置 {dict(zip(EXPR_CLASSES, np.round(bias, 2).tolist()))}")
+            print(f"[校准] 网页5类 macro-F1 {r0['expr5_f1']:.3f} → {f5:.3f}（在验证集上调的，偏乐观）")
+            with torch.no_grad():
+                model.expr_head.bias += torch.tensor(bias, device=model.expr_head.bias.device)
 
     meta = {"algorithm": "GRU-D + safety-aware asymmetric loss + expression head (multi-task)", "w_danger": a.w_danger,
             "lambda_expr": a.lambda_expr, "datasets": a.data_root, "train_drop": a.train_drop, "epochs": a.epochs,
+            "best_epoch": best_ep, "expr_bias_calibrated": bias is not None,
             "exported": time.strftime("%Y-%m-%d %H:%M:%S")}
     for drop in (0.0, 0.35):
-        r = evaluate(model, va, a.fps, drop, dev, a.batch)
+        r = evaluate(model, va, a.fps, drop, dev)
         meta[f"val_drop{int(drop*100)}"] = r
         print(f"\n[val drop={drop:.2f}]")
         if "ccc_v" in r:

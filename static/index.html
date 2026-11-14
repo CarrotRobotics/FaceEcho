@@ -266,6 +266,7 @@ function affProbs(o){
 }
 const topOf=p=>{let top='neutral',tv=-1;for(const k in p)if(p[k]>tv){tv=p[k];top=k;}return [top,tv];};
 let compSay={id:0,line:'',lang:'ja',text:''};   // 伙伴最近说的一句（推给 CoreS3 等外部设备）
+let exprEst=null;   // 可选：单独的表情模型 models/grud_expr.json（多任务 GRU-D 的表情头）；VA/距离仍用 grud_safety.json
 let affEst=null, driveByVA=false, affLast=null, affPostBusy=false, affPostT=0;
 const affHist=[]; const AFF_WIN=12;          // 轨迹窗口（秒）
 const affState=$('affState'), driveBtn=$('driveBtn'), robotChk=$('robotChk'), affHint=$('affHint');
@@ -274,6 +275,7 @@ if(new URLSearchParams(location.search).get('robot')==='1')robotChk.checked=true
 (async()=>{
   try{
     affEst=await SafeAffectEstimator.load('./models/grud_safety.json');
+    try{const e=await SafeAffectEstimator.load('./models/grud_expr.json');if(e.exprClasses)exprEst=e;}catch(e){exprEst=null;}
     driveBtn.disabled=false;driveByVA=true;renderAff();drawAffect();
   }catch(e){affEst=null;renderAff();drawAffect();}
 })();
@@ -285,7 +287,7 @@ function renderAff(){
   affState.className='pill';affState.textContent=t('aff_loaded')+(md.w_danger?` · W_DANGER=${md.w_danger}`:'');
   affHint.innerHTML=t('aff_info',{a:md.algorithm||'GRU-D + safety loss'})+
     (v&&v.ccc_v!==undefined?'<br>'+t('aff_val',{v:v.ccc_v.toFixed(2),ar:v.ccc_a.toFixed(2),d:(v.danger_viol*100).toFixed(1)}):'')+
-    (affEst.exprClasses?'<br>'+t('aff_expr',{f:((md.val_drop0||{}).expr_f1??NaN).toFixed(2)}):'<br>'+t('aff_noexpr'))+'<br>'+t('aff_extrap');
+    ((exprEst||affEst).exprClasses?'<br>'+t('aff_expr',{f:((((exprEst||affEst).meta||{}).val_drop0||{}).expr_f1??NaN).toFixed(2)}):'<br>'+t('aff_noexpr'))+'<br>'+t('aff_extrap');
 }
 driveBtn.onclick=()=>{driveByVA=!driveByVA;renderAff();compShown='';};
 
@@ -293,7 +295,9 @@ function affectStep(m,t){                    // m = {categoryName:score} 或 nul
   if(!affEst)return null;
   let x=null;
   if(m){x=new Float32Array(affEst.D);affEst.names.forEach((n,j)=>{x[j]=m[n]||0;});}
-  const t0=performance.now();const o=affEst.step(x,t);perf.grud(performance.now()-t0,o);affLast=o;
+  const t0=performance.now();const o=affEst.step(x,t);
+  if(exprEst){const oe=exprEst.step(x,t);if(oe.expr)o.expr=oe.expr;}
+  perf.grud(performance.now()-t0,o);affLast=o;
   affHist.push({t,v:o.v,a:o.a,obs:o.observed});
   while(affHist.length&&affHist[0].t<t-AFF_WIN)affHist.shift();
   drawAffect();postAffect(o);
@@ -435,7 +439,7 @@ $('perfCsv').onclick=()=>{
   a.href=URL.createObjectURL(b);a.download=`faceecho_perf_${d.getFullYear()}${z(d.getMonth()+1)}${z(d.getDate())}_${z(d.getHours())}${z(d.getMinutes())}.csv`;
   document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),1000);};
 
-stopBtn.onclick=()=>{running=false;if(affEst){affEst.reset();affHist.length=0;affLast=null;drawAffect();}startBtn.disabled=false;stopBtn.disabled=true;calBtn.disabled=true;
+stopBtn.onclick=()=>{running=false;if(exprEst)exprEst.reset();if(affEst){affEst.reset();affHist.length=0;affLast=null;drawAffect();}startBtn.disabled=false;stopBtn.disabled=true;calBtn.disabled=true;
   if(stream)stream.getTracks().forEach(t=>t.stop());ctx.clearRect(0,0,cv.width,cv.height);voice.stop();setStatus('st_stopped');};
 videoBtn.onclick=()=>{video.classList.toggle('hide');renderButtons();};
 muscleBtn.onclick=()=>{showMuscle=!showMuscle;renderButtons();};
